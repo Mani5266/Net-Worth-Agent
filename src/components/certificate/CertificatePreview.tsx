@@ -1,0 +1,310 @@
+"use client";
+
+import { forwardRef } from "react";
+import type { FormData } from "@/types";
+import { CA_FIRM } from "@/constants";
+import {
+  deriveAssessmentYear,
+  isForeignPurpose,
+  getPurposePhrase,
+  formatCertDate,
+  formatINR,
+  formatForeign,
+  parseAmount,
+  computeTotals,
+  buildSavingsRows,
+  buildMovableRows,
+} from "@/lib/utils";
+
+interface CertificateProps {
+  data: FormData;
+}
+
+// Table header style
+const TH: React.CSSProperties = {
+  padding: "7px 10px",
+  border: "1px solid #1a5c3e",
+  fontWeight: 700,
+  background: "#1a5c3e",
+  color: "#fff",
+  fontSize: 12,
+  textAlign: "left",
+};
+
+// Table cell style
+function td(extra: React.CSSProperties = {}): React.CSSProperties {
+  return { padding: "6px 10px", border: "1px solid #b0b0b0", fontSize: 12, ...extra };
+}
+
+interface AnnexTableProps {
+  rows: { label: string; inr: string }[];
+  total: number;
+}
+
+function AnnexTable({ rows, total }: AnnexTableProps) {
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
+      <thead>
+        <tr>
+          <th style={TH}>Particulars</th>
+          <th style={{ ...TH, width: 160, textAlign: "right" }}>Indian (Rs.)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => {
+          const label = row.label;
+          return (
+            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+              <td style={td()}>{label}</td>
+              <td style={td({ textAlign: "right" })}>
+                {row.inr ? formatINR(parseAmount(row.inr)) : ""}
+              </td>
+            </tr>
+          );
+        })}
+        <tr style={{ background: "#f0fdf4" }}>
+          <td style={td({ fontWeight: 700 })}><strong>Total</strong></td>
+          <td style={td({ textAlign: "right", fontWeight: 700 })}><strong>{formatINR(total)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
+  function CertificatePreview({ data }, ref) {
+    const isF = isForeignPurpose(data.purpose);
+    const name = `${data.salutation} ${data.fullName || "[Name of Applicant]"}`;
+    const dateStr = formatCertDate(data.certDate);
+    const purposeTxt = getPurposePhrase(data.purpose, data.country);
+    const totals = computeTotals(data);
+
+    const assessmentYear = deriveAssessmentYear(data.certDate);
+    const dynamicIncomeLabel = `Income of the Applicant – ${data.fullName || "[Name of Applicant]"} for the Assessment Year ${assessmentYear}`;
+
+    const rawIncRows = data.incomeRows.length > 0 ? data.incomeRows : [{ label: "Income of the Applicant", inr: "" }];
+    const incRows = rawIncRows.map((row, i) => {
+      if (i === 0 && (row.label === "Income of the Applicant" || row.label.startsWith("Income of the Applicant –"))) {
+        return { ...row, label: dynamicIncomeLabel };
+      }
+      return row;
+    });
+
+    const immovableTableLabel = data.propertyAddress
+      ? `Address of the immovable property — ${data.propertyAddress}`
+      : "Address of the immovable property and its details.";
+
+    const immRows = data.immovableRows.map((row, i) => {
+      if (i === 0 && (row.label === "Address of the immovable property and its details." || row.label.startsWith("Address of the immovable property —"))) {
+        return { ...row, label: immovableTableLabel };
+      }
+      return row;
+    });
+
+    const movRows = buildMovableRows(data).map((row, i) => ({
+      ...row,
+      inr: data.movableRows[i]?.inr || "",
+    }));
+
+    const savRows = data.savingsRows ?? buildSavingsRows(data);
+    
+    // Combine manual checkmarks with uploaded file names for the "compiled from" list
+    const incomeFileNames = Object.values(data.incomeDocs).flatMap(docs => docs.map(d => d.name));
+    const baseDocs = data.supportingDocs.length > 0 ? data.supportingDocs : [
+      "Income tax return copies of Applicant.",
+      "Valuation/self-declaration documents of immovable properties.",
+    ];
+    const docs = [...baseDocs, ...incomeFileNames];
+
+    const cl = data.country || "Foreign Currency";
+    const overrideRate = data.exchangeRate ? parseFloat(data.exchangeRate) : null;
+
+    // Helper to resolve custom label for display
+    const getDisplayTypes = (types: string[], labels: Record<string, string>) => 
+      types.map(t => labels[t]?.trim() ? `${t} (${labels[t].trim()})` : t).join(", ");
+
+    return (
+      <div
+        ref={ref}
+        style={{
+          fontFamily: "'Book Antiqua', Georgia, serif",
+          fontSize: 13,
+          color: "#111",
+          lineHeight: 1.9,
+          background: "#fff",
+          padding: 36,
+          borderRadius: 8,
+          border: "1.5px solid #ccc",
+        }}
+      >
+        {/* ── Header ── */}
+        <p style={{ textAlign: "center", fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>
+          TO WHOMSOEVER IT MAY CONCERN
+        </p>
+        <p style={{ textAlign: "center", fontWeight: 700, fontSize: 19, textDecoration: "underline", margin: "0 0 24px" }}>
+          NETWORTH CERTIFICATE
+        </p>
+
+        {/* ── Body paragraph ── */}
+        <p style={{ textAlign: "justify", marginBottom: 16 }}>
+          I, <strong>BODDU ABHISHEK</strong>, member of The Institute of Chartered Accountants of
+          India, do hereby certify that I have reviewed the financial condition of the Applicant,{" "}
+          <strong style={{ textDecoration: "underline" }}>{name}</strong>, with the view to furnish
+          his net worth <em>{purposeTxt}</em>. The Below detail of the assets are obtained as on{" "}
+          <strong>{dateStr}</strong>
+        </p>
+
+        {/* ── Summary Table ── */}
+        {!isF ? (
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
+            <thead>
+              <tr>
+                <th style={{ ...TH, width: 50, textAlign: "center" }}>Sl. No.</th>
+                <th style={TH}>SOURCES OF FUNDS</th>
+                <th style={{ ...TH, width: 150, textAlign: "right" }}>INDIAN (Rs.)</th>
+                <th style={{ ...TH, width: 140, textAlign: "center" }}>REFERENCE (ANNEXURES)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { n: "1",  l: "Current Income",    v: formatINR(totals.incomeINR),    r: "I" },
+                { n: "2.", l: "Immovable Assets",   v: formatINR(totals.immovableINR), r: "II" },
+                { n: "3.", l: "Movable Properties", v: formatINR(totals.movableINR),   r: "III" },
+                { n: "4.", l: "Current Savings",    v: formatINR(totals.savingsINR),   r: "IV" },
+              ].map((row) => (
+                <tr key={row.n}>
+                  <td style={td({ textAlign: "center" })}><strong>{row.n}</strong></td>
+                  <td style={td()}><strong>{row.l}</strong></td>
+                  <td style={td({ textAlign: "right" })}><strong>{row.v}</strong></td>
+                  <td style={td({ textAlign: "center" })}><strong>{row.r}</strong></td>
+                </tr>
+              ))}
+              <tr style={{ background: "#f0fdf4" }}>
+                <td style={td()} colSpan={2}><strong><u>Total</u></strong></td>
+                <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
+                <td style={td()} />
+              </tr>
+            </tbody>
+          </table>
+        ) : (
+          <div>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...TH, width: 45, textAlign: "center" }}>Sl. No.</th>
+                  <th style={TH}>SOURCES OF FUNDS</th>
+                  <th style={{ ...TH, width: 120, textAlign: "right" }}>INDIAN (Rs.)</th>
+                  <th style={{ ...TH, width: 120, textAlign: "right" }}>{cl}</th>
+                  <th style={{ ...TH, width: 120, textAlign: "center" }}>REFERENCE (ANNEXURES)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { n: "1",  l: "Current Income",    v: formatINR(totals.incomeINR),    f: formatForeign(totals.incomeForeign),    r: "I" },
+                  { n: "2.", l: "Immovable Assets",   v: formatINR(totals.immovableINR), f: formatForeign(totals.immovableForeign), r: "II" },
+                  { n: "3.", l: "Movable Properties", v: formatINR(totals.movableINR),   f: formatForeign(totals.movableForeign),   r: "III" },
+                  { n: "4.", l: "Current Savings",    v: formatINR(totals.savingsINR),   f: formatForeign(totals.savingsForeign),   r: "IV" },
+                ].map((row) => (
+                  <tr key={row.n}>
+                    <td style={td({ textAlign: "center" })}><strong>{row.n}</strong></td>
+                    <td style={td()}><strong>{row.l}</strong></td>
+                    <td style={td({ textAlign: "right" })}><strong>{row.v}</strong></td>
+                    <td style={td({ textAlign: "right" })}><strong>{row.f}</strong></td>
+                    <td style={td({ textAlign: "center" })}><strong>{row.r}</strong></td>
+                  </tr>
+                ))}
+                <tr style={{ background: "#f0fdf4" }}>
+                  <td style={td()} colSpan={2}><strong><u>Total</u></strong></td>
+                  <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
+                  <td style={td({ textAlign: "right" })}><strong>{formatForeign(totals.grandForeign)}</strong></td>
+                  <td style={td()} />
+                </tr>
+              </tbody>
+            </table>
+            {overrideRate && (
+              <p style={{ fontSize: 10, color: "#666", textAlign: "right", margin: "0 0 20px" }}>
+                * Foreign currency converted at the rate of 1 USD = ₹{overrideRate.toFixed(2)} as on {dateStr}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Supporting Documents ── */}
+        <p style={{ marginBottom: 6 }}>
+          The above figures are compiled from the following documents and certificates submitted
+          before me:
+        </p>
+        <ol style={{ marginLeft: 22, marginBottom: 20 }}>
+          {docs.map((doc, i) => (
+            <li key={i} style={{ marginBottom: 3 }}>{doc}</li>
+          ))}
+        </ol>
+
+        {/* ── ANNEXURE I ── */}
+        <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
+          <strong>ANNEXURE-I&nbsp;&nbsp;&nbsp;&nbsp;CURRENT INCOME</strong>
+        </p>
+        {data.incomeTypes.length > 0 && (
+          <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
+            <em>Income Sources: {getDisplayTypes(data.incomeTypes, data.incomeLabels)}</em>
+          </p>
+        )}
+        <AnnexTable rows={incRows} total={totals.incomeINR} />
+
+        {/* ── ANNEXURE II ── */}
+        <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
+          <strong>ANNEXURE – II&nbsp;&nbsp;&nbsp;&nbsp;IMMOVABLE ASSETS</strong>
+        </p>
+        {data.immovableTypes.length > 0 && (
+          <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
+            <em>Property Types: {getDisplayTypes(data.immovableTypes, data.immovableLabels)}</em>
+          </p>
+        )}
+        <AnnexTable
+          rows={immRows}
+          total={totals.immovableINR}
+        />
+
+        {/* ── ANNEXURE III ── */}
+        <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
+          <strong>ANNEXURE – III&nbsp;&nbsp;&nbsp;&nbsp;MOVABLE PROPERTIES</strong>
+        </p>
+        {data.movableTypes.length > 0 && (
+          <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
+            <em>Asset Types: {getDisplayTypes(data.movableTypes, data.movableLabels)}</em>
+          </p>
+        )}
+        <AnnexTable
+          rows={movRows}
+          total={totals.movableINR}
+        />
+
+        {/* ── ANNEXURE IV ── */}
+        <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
+          <strong>ANNEXURE – IV&nbsp;&nbsp;&nbsp;&nbsp;CURRENT SAVINGS</strong>
+        </p>
+        {data.savingsTypes.length > 0 && (
+          <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
+            <em>Categories: {getDisplayTypes(data.savingsTypes, data.savingsLabels)}</em>
+          </p>
+        )}
+        <AnnexTable rows={savRows} total={totals.savingsINR} />
+
+        {/* ── Signature Block ── */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 36 }}>
+          <div>
+            <p style={{ margin: "0 0 2px" }}><strong>For {CA_FIRM.name},</strong></p>
+            <p style={{ margin: "0 0 2px" }}>{CA_FIRM.type},</p>
+            <p style={{ margin: "0 0 18px" }}>FRN {CA_FIRM.frn}</p>
+            <p style={{ margin: "0 0 2px" }}><strong>{CA_FIRM.partnerName}</strong></p>
+            <p style={{ margin: "0 0 2px" }}>{CA_FIRM.partnerTitle}</p>
+            <p style={{ margin: "0 0 18px" }}>Membership No. {CA_FIRM.membershipNo}</p>
+            <p style={{ margin: "0 0 2px" }}>Date: {dateStr}</p>
+            <p style={{ margin: "0 0 2px" }}>Place: {CA_FIRM.place}</p>
+            <p style={{ margin: 0 }}>UDIN: {data.udin || "__________________________"}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+);
