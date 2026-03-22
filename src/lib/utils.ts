@@ -212,6 +212,7 @@ export function buildCertificateText(d: FormData): string {
   const purposeTxt = getPurposePhrase(d.purpose, d.country);
   const savRows = buildSavingsRows(d).map((row, i) => ({
     ...row,
+    label: row.label || `Savings Entry ${i + 1}`,
     inr: d.savingsRows?.[i]?.inr || "",
   }));
   const docs = d.supportingDocs.length > 0
