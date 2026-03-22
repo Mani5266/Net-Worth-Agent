@@ -108,6 +108,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
 
     const savRows = buildSavingsRows(data).map((row, i) => ({
       ...row,
+      label: row.label || `Savings Entry ${i + 1}`,
       inr: data.savingsRows?.[i]?.inr || "",
     }));
     
