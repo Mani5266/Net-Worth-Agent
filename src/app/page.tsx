@@ -103,7 +103,8 @@ export default function HomePage() {
           const parsed = JSON.parse(resumeData);
           if (parsed.purpose !== undefined) {
             setData(parsed);
-            updateCertificateId(resumeId);
+            setCertificateId(resumeId); // Set state directly to avoid triggering ID persistence logic in a loop
+            localStorage.setItem("networth_current_id", resumeId);
             if (viewOnly === "true") setStep(6);
             return;
           }
@@ -115,9 +116,9 @@ export default function HomePage() {
         }
       }
 
-      // 2. Refresh Persistence: Check for current session ID
+      // 2. Refresh Persistence / Sidebar Switch: Fetch if ID exists and data is missing or different
       const currentId = localStorage.getItem("networth_current_id");
-      if (currentId && !certificateId) {
+      if (currentId) {
         try {
           setLoading(true);
           const freshData = await getCertificate(currentId);
@@ -133,7 +134,7 @@ export default function HomePage() {
     };
 
     handleInit();
-  }, [setData, updateCertificateId, certificateId]);
+  }, [setData, session]); // Only run on mount or when session changes
 
   // Reset / New Certificate
   const handleReset = useCallback(() => {
@@ -397,10 +398,18 @@ export default function HomePage() {
                   history.slice(0, 10).map((cert) => (
                     <button
                       key={cert.id}
-                      onClick={() => {
-                        updateCertificateId(cert.id);
-                        // Trigger reload logic
-                        window.location.reload(); // Hard reload is simplest to clear all caches/states
+                      onClick={async () => {
+                        try {
+                          setLoading(true);
+                          const freshData = await getCertificate(cert.id);
+                          setData(freshData);
+                          updateCertificateId(cert.id);
+                          setStep(0); // Reset to first step when switching
+                        } catch (err) {
+                          console.error("Failed to switch certificate:", err);
+                        } finally {
+                          setLoading(false);
+                        }
                       }}
                       className={`w-full text-left p-3 rounded-xl transition-all border group ${
                         certificateId === cert.id 
