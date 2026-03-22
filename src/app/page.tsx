@@ -342,107 +342,113 @@ export default function HomePage() {
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="max-w-3xl mx-auto">
+        {!session ? (
+          <Auth_UI />
+        ) : (
+          <>
+            {/* ── Header ── */}
+            <div className="text-center mb-10 no-print">
+              <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-800 to-emerald-600 tracking-tight transition-all duration-500 hover:scale-[1.01] cursor-default">
+                Net Worth Certificate Agent
+              </h1>
+              <div className="flex items-center justify-center gap-4 mt-2">
+                <Link 
+                  href="/history" 
+                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
+                >
+                  📋 View History
+                </Link>
+                <span className="text-gray-300">|</span>
+                <button
+                  onClick={handleReset}
+                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
+                >
+                  ➕ New Certificate
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  onClick={handleSignOut}
+                  className="text-[11px] font-bold text-red-600 hover:text-red-800 transition-colors uppercase tracking-widest flex items-center gap-1"
+                >
+                  🔒 Sign Out
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-2">Logged in as: {session.user?.email}</p>
+              {isF && usdRate && (
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                    {overrideRate
+                      ? `₹${overrideRate.toFixed(2)} (Manual rate)`
+                      : `₹${liveRate?.toFixed(2)} (Live rate)`}
+                  </span>
+                  {!overrideRate && fetchedAt && (
+                    <span className="text-[10px] text-gray-400">
+                      updated {new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
-        {/* ── Header ── */}
-        <div className="text-center mb-10 no-print">
-          <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-800 to-emerald-600 tracking-tight transition-all duration-500 hover:scale-[1.01] cursor-default">
-            Net Worth Certificate Agent
-          </h1>
-          <div className="flex items-center justify-center gap-4 mt-2">
-            <Link 
-              href="/history" 
-              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
-            >
-              📋 View History
-            </Link>
-            <span className="text-gray-300">|</span>
-            <button
-              onClick={handleReset}
-              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
-            >
-              ➕ New Certificate
-            </button>
-            <span className="text-gray-300">|</span>
-            <button
-              onClick={handleSignOut}
-              className="text-[11px] font-bold text-red-600 hover:text-red-800 transition-colors uppercase tracking-widest flex items-center gap-1"
-            >
-              🔒 Sign Out
-            </button>
-          </div>
-          {isF && usdRate && (
-            <div className="mt-2 flex items-center justify-center gap-2">
-              <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-                {overrideRate
-                  ? `₹${overrideRate.toFixed(2)} (Manual rate)`
-                  : `₹${liveRate?.toFixed(2)} (Live rate)`}
-              </span>
-              {!overrideRate && fetchedAt && (
-                <span className="text-[10px] text-gray-400">
-                  updated {new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {/* ── Progress Bar ── */}
+            <div className="no-print">
+              <ProgressBar
+                steps={STEPS}
+                currentStep={step}
+                onClickStep={(i) => i < step && setStep(i)}
+              />
+            </div>
+
+            {/* Draft Saved Indicator */}
+            <div className="h-6 flex justify-end no-print">
+              {draftSaved && (
+                <span className="text-[10px] font-bold text-emerald-600 animate-bounce">
+                  Draft saved ✓
+                </span>
+              )}
+              {saving && (
+                <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
+                  Saving draft...
                 </span>
               )}
             </div>
-          )}
-        </div>
 
-        {/* ── Progress Bar ── */}
-        <div className="no-print">
-          <ProgressBar
-            steps={STEPS}
-            currentStep={step}
-            onClickStep={(i) => i < step && setStep(i)}
-          />
-        </div>
-
-        {/* Draft Saved Indicator */}
-        <div className="h-6 flex justify-end no-print">
-          {draftSaved && (
-            <span className="text-[10px] font-bold text-emerald-600 animate-bounce">
-              Draft saved ✓
-            </span>
-          )}
-          {saving && (
-            <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
-              Saving draft...
-            </span>
-          )}
-        </div>
-
-        {/* ── Step Content ── */}
-        <div key={step} className="animate-fade-in">
-          {loading ? (
-            <div className="py-20 text-center">
-              <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-gray-500 animate-pulse">Restoring your draft...</p>
+            {/* ── Step Content ── */}
+            <div key={step} className="animate-fade-in">
+              {loading ? (
+                <div className="py-20 text-center">
+                  <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+                  <p className="text-gray-500 animate-pulse">Restoring your draft...</p>
+                </div>
+              ) : (
+                renderStep()
+              )}
             </div>
-          ) : (
-            renderStep()
-          )}
-        </div>
 
-        {/* ── Navigation ── */}
-        <div className="flex justify-between mt-4 no-print">
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
-          >
-            ← Back
-          </Button>
+            {/* ── Navigation ── */}
+            <div className="flex justify-between mt-4 no-print">
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                disabled={step === 0}
+              >
+                ← Back
+              </Button>
 
-          {step < STEPS.length - 1 && (
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleNext}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
-            </Button>
-          )}
-        </div>
+              {step < STEPS.length - 1 && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleNext}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
+                </Button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
