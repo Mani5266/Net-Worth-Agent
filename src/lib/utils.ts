@@ -210,7 +210,10 @@ export function buildCertificateText(d: FormData): string {
   const applicantName = `${d.salutation} ${d.fullName}`;
   const dateStr = formatCertDate(d.certDate);
   const purposeTxt = getPurposePhrase(d.purpose, d.country);
-  const savRows = d.savingsRows ?? buildSavingsRows(d);
+  const savRows = buildSavingsRows(d).map((row, i) => ({
+    ...row,
+    inr: d.savingsRows?.[i]?.inr || "",
+  }));
   const docs = d.supportingDocs.length > 0
     ? d.supportingDocs
     : ["Income tax return copies of Applicant.", "Valuation/self-declaration documents of immovable properties."];

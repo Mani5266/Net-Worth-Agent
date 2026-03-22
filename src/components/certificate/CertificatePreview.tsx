@@ -106,7 +106,10 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
       inr: data.movableRows[i]?.inr || "",
     }));
 
-    const savRows = data.savingsRows ?? buildSavingsRows(data);
+    const savRows = buildSavingsRows(data).map((row, i) => ({
+      ...row,
+      inr: data.savingsRows?.[i]?.inr || "",
+    }));
     
     // Combine manual checkmarks with uploaded file names for the "compiled from" list
     const incomeFileNames = Object.values(data.incomeDocs).flatMap(docs => docs.map(d => d.name));
