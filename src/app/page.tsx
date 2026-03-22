@@ -26,6 +26,7 @@ import type { Session } from "@supabase/supabase-js";
 export default function HomePage() {
   const [step, setStep] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const certRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -191,8 +192,34 @@ export default function HomePage() {
   }, [certificateId, data, updateCertificateId, setData]);
 
   const handleNext = async () => {
+    // ── Validation ─────────────────────────────────────────────────────────────
+    setValidationError(null);
+    let error: string | null = null;
+
+    if (step === 0) {
+      if (!data.purpose) error = "Please select the purpose of the certificate.";
+      else if (isForeignPurpose(data.purpose) && !data.country) error = "Please select the destination country.";
+    } else if (step === 1) {
+      if (!data.fullName.trim()) error = "Applicant Name is required.";
+      else if (!data.pan.trim()) error = "PAN Number is required.";
+    } else if (step === 2) {
+      if (data.incomeTypes.length === 0) error = "Please select at least one income source.";
+    } else if (step === 3) {
+      if (data.immovableTypes.length > 0 && !data.propertyAddress.trim()) error = "Property address is required since you selected immovable assets.";
+    } else if (step === 5) {
+      if (data.savingsTypes.includes("Bank-Related Assets") && !data.bankDetails.trim()) error = "Bank account details are required.";
+      else if (data.savingsTypes.length === 0) error = "Please select at least one savings category.";
+    }
+
+    if (error) {
+      setValidationError(error);
+      window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top to see types/inputs if needed, or just focus
+      return;
+    }
+
     await handleSave(step);
     setStep((s) => Math.min(STEPS.length - 1, s + 1));
+    window.scrollTo(0, 0);
   };
 
   const isF = isForeignPurpose(data.purpose);
@@ -498,26 +525,36 @@ export default function HomePage() {
               </div>
 
               {/* ── Navigation ── */}
-              <div className="flex justify-between mt-8 no-print border-t border-gray-100 pt-6">
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setStep((s) => Math.max(0, s - 1))}
-                  disabled={step === 0}
-                >
-                  ← Back
-                </Button>
-
-                {step < STEPS.length - 1 && (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={handleNext}
-                    disabled={saving}
-                  >
-                    {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
-                  </Button>
+              <div className="mt-8 no-print border-t border-gray-100 pt-6">
+                {validationError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-xs font-bold animate-shake">
+                    <span>⚠️</span> {validationError}
+                  </div>
                 )}
+                <div className="flex justify-between">
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={() => {
+                      setValidationError(null);
+                      setStep((s) => Math.max(0, s - 1));
+                    }}
+                    disabled={step === 0}
+                  >
+                    ← Back
+                  </Button>
+
+                  {step < STEPS.length - 1 && (
+                    <Button
+                      variant="primary"
+                      size="md"
+                      onClick={handleNext}
+                      disabled={saving}
+                    >
+                      {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </main>

@@ -29,6 +29,16 @@ body {
   animation: fadeSlideIn 0.25s ease forwards;
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}
+
 /* Print styles for certificate */
 @media print {
   .no-print {
