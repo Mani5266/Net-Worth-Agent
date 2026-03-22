@@ -16,8 +16,9 @@ import { useFormData, INITIAL_STATE } from "@/hooks/useFormData";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { STEPS } from "@/constants";
 import { isForeignPurpose, buildCertificateText } from "@/lib/utils";
-import { saveCertificateDraft, updateCertificateDraft } from "@/lib/db";
+import { saveCertificateDraft, updateCertificateDraft, getAllCertificates, getCertificate } from "@/lib/db";
 import Link from "next/link";
+import { CertificateRecord } from "@/types";
 import { Auth_UI } from "@/components/auth/Auth";
 import { supabase } from "@/lib/supabase";
 import type { Session } from "@supabase/supabase-js";
@@ -44,6 +45,7 @@ export default function HomePage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [history, setHistory] = useState<CertificateRecord[]>([]);
 
   // Auth Sync
   useEffect(() => {
@@ -62,6 +64,21 @@ export default function HomePage() {
     supabase.auth.signOut();
     updateCertificateId(null);
   };
+
+  // Fetch History for Sidebar
+  const loadHistory = useCallback(async () => {
+    if (!session) return;
+    try {
+      const data = await getAllCertificates();
+      setHistory(data);
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory, certificateId]); // Reload when ID changes (new certificate saved)
 
   // Persistence: Store current ID in localStorage
   const updateCertificateId = useCallback((id: string | null) => {
@@ -103,7 +120,6 @@ export default function HomePage() {
       if (currentId && !certificateId) {
         try {
           setLoading(true);
-          const { getCertificate } = await import("@/lib/db");
           const freshData = await getCertificate(currentId);
           setData(freshData);
           setCertificateId(currentId);
@@ -340,116 +356,164 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen px-4 py-8">
-      <div className="max-w-3xl mx-auto">
-        {!session ? (
-          <Auth_UI />
-        ) : (
-          <>
-            {/* ── Header ── */}
-            <div className="text-center mb-10 no-print">
-              <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-800 to-emerald-600 tracking-tight transition-all duration-500 hover:scale-[1.01] cursor-default">
-                Net Worth Certificate Agent
+    <div className="min-h-screen bg-gray-50/50">
+      {!session ? (
+        <Auth_UI />
+      ) : (
+        <div className="flex flex-col lg:flex-row min-h-screen">
+          {/* ── Sidebar (Dashboard) ── */}
+          <aside className="w-full lg:w-80 bg-white border-b lg:border-r border-gray-200 p-6 flex flex-col no-print">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 bg-emerald-700 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-emerald-200">
+                N
+              </div>
+              <h1 className="text-xl font-black text-emerald-900 tracking-tight leading-tight">
+                Net Worth<br/>Agent
               </h1>
-              <div className="flex items-center justify-center gap-4 mt-2">
-                <Link 
-                  href="/history" 
-                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
-                >
-                  📋 View History
+            </div>
+
+            <Button
+              variant="primary"
+              className="w-full justify-start gap-2 mb-8 py-3 rounded-xl shadow-md shadow-emerald-100"
+              onClick={handleReset}
+            >
+              <span className="text-lg">➕</span> New Certificate
+            </Button>
+
+            <div className="flex-1 overflow-y-auto">
+              <div className="flex items-center justify-between mb-4 px-1">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
+                  Recent Certificates
+                </h2>
+                <Link href="/history" className="text-[10px] font-bold text-emerald-700 hover:underline px-1">
+                  View All
                 </Link>
-                <span className="text-gray-300">|</span>
-                <button
-                  onClick={handleReset}
-                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
-                >
-                  ➕ New Certificate
-                </button>
-                <span className="text-gray-300">|</span>
+              </div>
+
+              <div className="space-y-2">
+                {history.length === 0 ? (
+                  <p className="text-xs text-center text-gray-400 py-8 italic">No drafts yet.</p>
+                ) : (
+                  history.slice(0, 10).map((cert) => (
+                    <button
+                      key={cert.id}
+                      onClick={() => {
+                        updateCertificateId(cert.id);
+                        // Trigger reload logic
+                        window.location.reload(); // Hard reload is simplest to clear all caches/states
+                      }}
+                      className={`w-full text-left p-3 rounded-xl transition-all border group ${
+                        certificateId === cert.id 
+                          ? "bg-emerald-50 border-emerald-200 ring-1 ring-emerald-100" 
+                          : "bg-white border-transparent hover:border-gray-200 hover:bg-gray-50/50"
+                      }`}
+                    >
+                      <p className="text-[13px] font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-800 transition-colors">
+                        {cert.clientName || "Unnamed Client"}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          {new Date(cert.createdAt).toLocaleDateString()}
+                        </span>
+                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded leading-none ${
+                        cert.status === 'completed' 
+                          ? 'bg-emerald-100 text-emerald-700' 
+                          : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {cert.status}
+                      </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0">
+                    {session.user?.email?.[0].toUpperCase()}
+                  </div>
+                  <p className="text-[11px] font-bold text-gray-600 truncate">
+                    {session.user?.email}
+                  </p>
+                </div>
                 <button
                   onClick={handleSignOut}
-                  className="text-[11px] font-bold text-red-600 hover:text-red-800 transition-colors uppercase tracking-widest flex items-center gap-1"
+                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                  title="Sign Out"
                 >
-                  🔒 Sign Out
+                  🔒
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 mt-2">Logged in as: {session.user?.email}</p>
-              {isF && usdRate && (
-                <div className="mt-2 flex items-center justify-center gap-2">
-                  <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-                    {overrideRate
-                      ? `₹${overrideRate.toFixed(2)} (Manual rate)`
-                      : `₹${liveRate?.toFixed(2)} (Live rate)`}
+            </div>
+          </aside>
+
+          {/* ── Main Content (Wizard) ── */}
+          <main className="flex-1 px-4 py-8 lg:p-12 overflow-y-auto">
+            <div className="max-w-3xl mx-auto">
+              {/* ── Progress Bar ── */}
+              <div className="no-print mb-8">
+                <ProgressBar
+                  steps={STEPS}
+                  currentStep={step}
+                  onClickStep={(i) => i < step && setStep(i)}
+                />
+              </div>
+
+              {/* Draft Saved Indicator */}
+              <div className="h-6 flex justify-end no-print mb-2">
+                {draftSaved && (
+                  <span className="text-[10px] font-bold text-emerald-600 animate-bounce">
+                    Draft saved ✓
                   </span>
-                  {!overrideRate && fetchedAt && (
-                    <span className="text-[10px] text-gray-400">
-                      updated {new Date(fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+                {saving && (
+                  <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
+                    Saving draft...
+                  </span>
+                )}
+              </div>
 
-            {/* ── Progress Bar ── */}
-            <div className="no-print">
-              <ProgressBar
-                steps={STEPS}
-                currentStep={step}
-                onClickStep={(i) => i < step && setStep(i)}
-              />
-            </div>
+              {/* ── Step Content ── */}
+              <div key={step} className="animate-fade-in relative">
+                {loading ? (
+                  <div className="py-20 text-center">
+                    <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+                    <p className="text-gray-500 animate-pulse">Restoring your draft...</p>
+                  </div>
+                ) : (
+                  renderStep()
+                )}
+              </div>
 
-            {/* Draft Saved Indicator */}
-            <div className="h-6 flex justify-end no-print">
-              {draftSaved && (
-                <span className="text-[10px] font-bold text-emerald-600 animate-bounce">
-                  Draft saved ✓
-                </span>
-              )}
-              {saving && (
-                <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
-                  Saving draft...
-                </span>
-              )}
-            </div>
-
-            {/* ── Step Content ── */}
-            <div key={step} className="animate-fade-in">
-              {loading ? (
-                <div className="py-20 text-center">
-                  <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-gray-500 animate-pulse">Restoring your draft...</p>
-                </div>
-              ) : (
-                renderStep()
-              )}
-            </div>
-
-            {/* ── Navigation ── */}
-            <div className="flex justify-between mt-4 no-print">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => setStep((s) => Math.max(0, s - 1))}
-                disabled={step === 0}
-              >
-                ← Back
-              </Button>
-
-              {step < STEPS.length - 1 && (
+              {/* ── Navigation ── */}
+              <div className="flex justify-between mt-8 no-print border-t border-gray-100 pt-6">
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   size="md"
-                  onClick={handleNext}
-                  disabled={saving}
+                  onClick={() => setStep((s) => Math.max(0, s - 1))}
+                  disabled={step === 0}
                 >
-                  {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
+                  ← Back
                 </Button>
-              )}
+
+                {step < STEPS.length - 1 && (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={handleNext}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
+                  </Button>
+                )}
+              </div>
             </div>
-          </>
-        )}
-      </div>
+          </main>
+        </div>
+      )}
     </div>
   );
 }

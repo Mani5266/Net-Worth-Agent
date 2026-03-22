@@ -291,7 +291,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         <AnnexTable rows={savRows} total={totals.savingsINR} />
 
         {/* ── Signature Block ── */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 36 }}>
+        <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 36 }}>
           <div>
             <p style={{ margin: "0 0 2px" }}><strong>For {CA_FIRM.name},</strong></p>
             <p style={{ margin: "0 0 2px" }}>{CA_FIRM.type},</p>
