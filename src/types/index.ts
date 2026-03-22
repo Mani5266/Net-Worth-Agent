@@ -38,6 +38,7 @@ export interface FormData {
   country: string;
   certDate: string;
   exchangeRate: string; // manual ₹/USD rate on certDate
+  nickname?: string;
 
   // Step 2 – Applicant
   salutation: SalutationType;
@@ -119,6 +120,7 @@ export interface GenerateCertificateResponse {
 export interface CertificateRecord {
   id: string;
   clientName: string;
+  nickname?: string;
   purpose: string;
   certDate: string;
   status: "draft" | "completed";

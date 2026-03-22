@@ -16,9 +16,9 @@ import { useFormData, INITIAL_STATE } from "@/hooks/useFormData";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { STEPS } from "@/constants";
 import { isForeignPurpose, buildCertificateText } from "@/lib/utils";
-import { saveCertificateDraft, updateCertificateDraft, getAllCertificates, getCertificate } from "@/lib/db";
+import { saveCertificateDraft, updateCertificateDraft, getAllCertificates, getCertificate, renameCertificate } from "@/lib/db";
 import Link from "next/link";
-import { CertificateRecord } from "@/types";
+import { CertificateRecord, PurposeValue } from "@/types";
 import { Auth_UI } from "@/components/auth/Auth";
 import { supabase } from "@/lib/supabase";
 import type { Session } from "@supabase/supabase-js";
@@ -46,6 +46,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [history, setHistory] = useState<CertificateRecord[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   // Auth Sync
   useEffect(() => {
@@ -146,15 +148,40 @@ export default function HomePage() {
     }
   }, [setData, updateCertificateId]);
 
+  const handleRename = async (id: string) => {
+    if (!editValue.trim()) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await renameCertificate(id, editValue.trim());
+      if (id === certificateId) {
+        setData(prev => ({ ...prev, nickname: editValue.trim() }));
+      }
+      setEditingId(null);
+      loadHistory();
+    } catch (err) {
+      console.error("Failed to rename:", err);
+    }
+  };
+
   // Auto-save logic
   const handleSave = useCallback(async (currentStep: number) => {
     try {
       setSaving(true);
+      
+      const newData = { ...data };
+      // Auto-name from purpose if nickname is empty (only on step 0)
+      if (currentStep === 0 && !newData.nickname && newData.purpose) {
+        newData.nickname = newData.purpose.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        setData(newData);
+      }
+
       if (currentStep === 0 && !certificateId) {
-        const id = await saveCertificateDraft(data);
+        const id = await saveCertificateDraft(newData);
         updateCertificateId(id);
       } else if (certificateId) {
-        await updateCertificateDraft(certificateId, data);
+        await updateCertificateDraft(certificateId, newData);
       }
       
       setDraftSaved(true);
@@ -164,7 +191,7 @@ export default function HomePage() {
     } finally {
       setSaving(false);
     }
-  }, [certificateId, data, updateCertificateId]);
+  }, [certificateId, data, updateCertificateId, setData]);
 
   const handleNext = async () => {
     await handleSave(step);
@@ -396,43 +423,77 @@ export default function HomePage() {
                   <p className="text-xs text-center text-gray-400 py-8 italic">No drafts yet.</p>
                 ) : (
                   history.slice(0, 10).map((cert) => (
-                    <button
+                    <div
                       key={cert.id}
-                      onClick={async () => {
-                        try {
-                          setLoading(true);
-                          const freshData = await getCertificate(cert.id);
-                          setData(freshData);
-                          updateCertificateId(cert.id);
-                          setStep(0); // Reset to first step when switching
-                        } catch (err) {
-                          console.error("Failed to switch certificate:", err);
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      className={`w-full text-left p-3 rounded-xl transition-all border group ${
+                      className={`relative group w-full rounded-xl transition-all border ${
                         certificateId === cert.id 
                           ? "bg-emerald-50 border-emerald-200 ring-1 ring-emerald-100" 
                           : "bg-white border-transparent hover:border-gray-200 hover:bg-gray-50/50"
                       }`}
                     >
-                      <p className="text-[13px] font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-800 transition-colors">
-                        {cert.clientName || "Unnamed Client"}
-                      </p>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-[10px] text-gray-400 font-medium">
-                          {new Date(cert.createdAt).toLocaleDateString()}
-                        </span>
-                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded leading-none ${
-                        cert.status === 'completed' 
-                          ? 'bg-emerald-100 text-emerald-700' 
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {cert.status}
-                      </span>
-                      </div>
-                    </button>
+                      {editingId === cert.id ? (
+                        <div className="p-3">
+                          <input
+                            autoFocus
+                            className="w-full text-[13px] font-bold bg-white border border-emerald-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() => handleRename(cert.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleRename(cert.id);
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            try {
+                              setLoading(true);
+                              const freshData = await getCertificate(cert.id);
+                              setData(freshData);
+                              updateCertificateId(cert.id);
+                              setStep(0);
+                            } catch (err) {
+                              console.error("Failed to switch certificate:", err);
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          className="w-full text-left p-3 pr-10"
+                        >
+                          <p className="text-[13px] font-bold text-gray-800 line-clamp-1 group-hover:text-emerald-800 transition-colors">
+                            {cert.nickname || cert.clientName || "Unnamed Client"}
+                          </p>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              {new Date(cert.createdAt).toLocaleDateString()}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded leading-none ${
+                            cert.status === 'completed' 
+                              ? 'bg-emerald-100 text-emerald-700' 
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {cert.status}
+                          </span>
+                          </div>
+                        </button>
+                      )}
+                      
+                      {editingId !== cert.id && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingId(cert.id);
+                            setEditValue(cert.nickname || cert.clientName || "");
+                          }}
+                          className="absolute right-3 top-3.5 p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 transition-all"
+                          title="Rename"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                    </div>
                   ))
                 )}
               </div>

@@ -31,6 +31,7 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       country: formData.country,
       cert_date: formData.certDate,
       udin: formData.udin,
+      nickname: formData.nickname || formData.purpose,
       status: "draft",
       form_data: formData as any,
     })
@@ -49,6 +50,7 @@ export async function updateCertificateDraft(id: string, formData: FormData): Pr
     .from("certificates")
     .update({
       form_data: formData as any,
+      nickname: formData.nickname,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -79,6 +81,7 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
     .select(`
       id,
       purpose,
+      nickname,
       cert_date,
       status,
       created_at,
@@ -93,11 +96,42 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
   return data.map((item: any) => ({
     id: item.id,
     clientName: item.clients?.full_name || "Unknown",
+    nickname: item.nickname,
     purpose: item.purpose,
     certDate: item.cert_date,
     status: item.status,
     createdAt: item.created_at,
   }));
+}
+
+/**
+ * Renames a certificate (updates both column and JSON)
+ */
+export async function renameCertificate(id: string, newName: string): Promise<void> {
+  // We need to update both the top-level column and the JSON inside form_data
+  const { data: cert, error: fetchError } = await supabase
+    .from("certificates")
+    .select("form_data")
+    .eq("id", id)
+    .single();
+
+  if (fetchError) throw fetchError;
+
+  const updatedFormData = {
+    ...(cert.form_data as any),
+    nickname: newName
+  };
+
+  const { error: updateError } = await supabase
+    .from("certificates")
+    .update({
+      nickname: newName,
+      form_data: updatedFormData,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id);
+
+  if (updateError) throw updateError;
 }
 
 /**
