@@ -393,7 +393,13 @@ export function StepSavings({
   const hasBank  = data.savingsTypes.includes("Bank-Related Assets");
   const hasInsur = data.savingsTypes.includes("Insurance");
 
-  const rows = buildSavingsRows(data);
+  const initialRows = buildSavingsRows(data);
+  // Merge the amounts from state if they exist
+  const rows = initialRows.map((row, i) => ({
+    ...row,
+    inr: data.savingsRows?.[i]?.inr || "",
+  }));
+
   const frRows = data.savingsFR.length === rows.length
     ? data.savingsFR
     : rows.map(() => "");

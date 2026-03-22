@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { FormData, AnnexureRow, UploadedDoc } from "@/types";
+import { uploadDocument } from "@/lib/db";
 
 const INITIAL_INCOME_ROWS: AnnexureRow[] = [
   { label: "Income of the Applicant", inr: "" },
@@ -14,7 +15,7 @@ const INITIAL_MOVABLE_ROWS: AnnexureRow[] = [
   { label: "Any other Movable Property", inr: "" },
 ];
 
-const INITIAL_STATE: FormData = {
+export const INITIAL_STATE: FormData = {
   // Step 1
   purpose: "",
   country: "",
@@ -176,12 +177,29 @@ export function useFormData() {
 
   // Generic document handlers to avoid extreme repetition
   const addDocs = useCallback((field: "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs") => 
-    (type: string, files: File[]) => {
+    (type: string, files: File[], certificateId?: string) => {
       files.forEach((file) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
           const dataUrl = e.target?.result as string;
-          const doc: UploadedDoc = { name: file.name, size: file.size, dataUrl };
+          let supabaseUrl = "";
+
+          // If we have a certificateId, upload to Supabase Storage
+          if (certificateId) {
+            try {
+              const annexureType = field.replace("Docs", "");
+              supabaseUrl = await uploadDocument(certificateId, annexureType, type, file);
+            } catch (err) {
+              console.error("Supabase upload failed:", err);
+            }
+          }
+
+          const doc: UploadedDoc = { 
+            name: file.name, 
+            size: file.size, 
+            dataUrl 
+          };
+
           setData((prev) => {
             const existing = (prev[field] as Record<string, UploadedDoc[]>)[type] ?? [];
             return {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button } from "@/components/ui";
 import { StepPurpose } from "@/components/steps/StepPurpose";
@@ -12,10 +12,15 @@ import {
   StepSavings,
 } from "@/components/steps/AnnexureSteps";
 import { CertificatePreview } from "@/components/certificate/CertificatePreview";
-import { useFormData } from "@/hooks/useFormData";
+import { useFormData, INITIAL_STATE } from "@/hooks/useFormData";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { STEPS } from "@/constants";
 import { isForeignPurpose, buildCertificateText } from "@/lib/utils";
+import { saveCertificateDraft, updateCertificateDraft } from "@/lib/db";
+import Link from "next/link";
+import { Auth_UI } from "@/components/auth/Auth";
+import { supabase } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 
 export default function HomePage() {
   const [step, setStep] = useState(0);
@@ -26,34 +31,133 @@ export default function HomePage() {
   const certRef = useRef<HTMLDivElement>(null);
 
   const {
-    data,
-    updateField,
-    toggleArrayItem,
-    updateLabel,
-    updateAnnexureRow,
-    updateForeignRow,
-    updateSavingsRow,
-    updateSavingsFR,
-    addPolicy,
-    updatePolicy,
-    removePolicy,
-    addIncomeDocs,
-    removeIncomeDoc,
-    addImmovableDocs,
-    removeImmovableDoc,
-    addMovableDocs,
-    removeMovableDoc,
-    addSavingsDocs,
-    removeSavingsDoc,
+    data, updateField, toggleArrayItem, updateLabel, updateAnnexureRow,
+    updateForeignRow, updateSavingsRow, updateSavingsFR, addPolicy,
+    updatePolicy, removePolicy, addIncomeDocs, removeIncomeDoc,
+    addImmovableDocs, removeImmovableDoc, addMovableDocs, removeMovableDoc,
+    addSavingsDocs, removeSavingsDoc, setData,
   } = useFormData();
 
-  const isF = isForeignPurpose(data.purpose);
+  // Supabase Integration State
+  const [certificateId, setCertificateId] = useState<string | null>(null);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
 
-  // Use manual override if provided, otherwise use live rate
+  // Auth Sync
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = () => {
+    supabase.auth.signOut();
+    updateCertificateId(null);
+  };
+
+  // Persistence: Store current ID in localStorage
+  const updateCertificateId = useCallback((id: string | null) => {
+    setCertificateId(id);
+    if (id) {
+      localStorage.setItem("networth_current_id", id);
+    } else {
+      localStorage.removeItem("networth_current_id");
+    }
+  }, []);
+
+  // Resume / Reload Logic
+  useEffect(() => {
+    const handleInit = async () => {
+      // 1. Check for manual Resume/View (from History page)
+      const resumeData = localStorage.getItem("networth_resume_data");
+      const resumeId = localStorage.getItem("networth_resume_id");
+      const viewOnly = localStorage.getItem("networth_view_only");
+
+      if (resumeData && resumeId) {
+        try {
+          const parsed = JSON.parse(resumeData);
+          if (parsed.purpose !== undefined) {
+            setData(parsed);
+            updateCertificateId(resumeId);
+            if (viewOnly === "true") setStep(6);
+            return;
+          }
+        } catch (err) { console.error(err); }
+        finally {
+          localStorage.removeItem("networth_resume_data");
+          localStorage.removeItem("networth_resume_id");
+          localStorage.removeItem("networth_view_only");
+        }
+      }
+
+      // 2. Refresh Persistence: Check for current session ID
+      const currentId = localStorage.getItem("networth_current_id");
+      if (currentId && !certificateId) {
+        try {
+          setLoading(true);
+          const { getCertificate } = await import("@/lib/db");
+          const freshData = await getCertificate(currentId);
+          setData(freshData);
+          setCertificateId(currentId);
+        } catch (err) {
+          console.error("Failed to restore session:", err);
+          localStorage.removeItem("networth_current_id");
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    handleInit();
+  }, [setData, updateCertificateId, certificateId]);
+
+  // Reset / New Certificate
+  const handleReset = useCallback(() => {
+    if (window.confirm("Are you sure you want to start a new certificate? This will clear all current inputs.")) {
+      setData(INITIAL_STATE);
+      setStep(0);
+      updateCertificateId(null);
+      window.scrollTo(0, 0);
+    }
+  }, [setData, updateCertificateId]);
+
+  // Auto-save logic
+  const handleSave = useCallback(async (currentStep: number) => {
+    try {
+      setSaving(true);
+      if (currentStep === 0 && !certificateId) {
+        const id = await saveCertificateDraft(data);
+        updateCertificateId(id);
+      } else if (certificateId) {
+        await updateCertificateDraft(certificateId, data);
+      }
+      
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save draft:", err);
+    } finally {
+      setSaving(false);
+    }
+  }, [certificateId, data, updateCertificateId]);
+
+  const handleNext = async () => {
+    await handleSave(step);
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  };
+
+  const isF = isForeignPurpose(data.purpose);
   const { usdRate: liveRate, fetchedAt } = useExchangeRate();
   const overrideRate = data.exchangeRate ? parseFloat(data.exchangeRate) : null;
   const usdRate = overrideRate && overrideRate > 0 ? overrideRate : liveRate;
-
   // ── AI Generation ────────────────────────────────────────────────────────────
   const generateWithAI = useCallback(async () => {
     setAiLoading(true);
@@ -117,7 +221,7 @@ export default function HomePage() {
             updateForeignRow={updateForeignRow("incomeFR")}
             updateField={updateField}
             updateLabel={updateLabel("incomeLabels")}
-            addIncomeDocs={addIncomeDocs}
+            addIncomeDocs={(type, files) => addIncomeDocs(type, files, certificateId || undefined)}
             removeIncomeDoc={removeIncomeDoc}
             usdRate={isF ? usdRate : undefined}
           />
@@ -132,7 +236,7 @@ export default function HomePage() {
             updateForeignRow={updateForeignRow("immovableFR")}
             updateField={updateField}
             updateLabel={updateLabel("immovableLabels")}
-            addImmovableDocs={addImmovableDocs}
+            addImmovableDocs={(type, files) => addImmovableDocs(type, files, certificateId || undefined)}
             removeImmovableDoc={removeImmovableDoc}
             usdRate={isF ? usdRate : undefined}
           />
@@ -147,7 +251,7 @@ export default function HomePage() {
             updateForeignRow={updateForeignRow("movableFR")}
             updateField={updateField}
             updateLabel={updateLabel("movableLabels")}
-            addMovableDocs={addMovableDocs}
+            addMovableDocs={(type, files) => addMovableDocs(type, files, certificateId || undefined)}
             removeMovableDoc={removeMovableDoc}
             usdRate={isF ? usdRate : undefined}
           />
@@ -166,7 +270,7 @@ export default function HomePage() {
             addPolicy={addPolicy}
             updatePolicy={updatePolicy}
             removePolicy={removePolicy}
-            addSavingsDocs={addSavingsDocs}
+            addSavingsDocs={(type, files) => addSavingsDocs(type, files, certificateId || undefined)}
             removeSavingsDoc={removeSavingsDoc}
             usdRate={isF ? usdRate : undefined}
           />
@@ -244,6 +348,28 @@ export default function HomePage() {
           <h1 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-emerald-800 to-emerald-600 tracking-tight transition-all duration-500 hover:scale-[1.01] cursor-default">
             Net Worth Certificate Agent
           </h1>
+          <div className="flex items-center justify-center gap-4 mt-2">
+            <Link 
+              href="/history" 
+              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
+            >
+              📋 View History
+            </Link>
+            <span className="text-gray-300">|</span>
+            <button
+              onClick={handleReset}
+              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 transition-colors uppercase tracking-widest flex items-center gap-1"
+            >
+              ➕ New Certificate
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              onClick={handleSignOut}
+              className="text-[11px] font-bold text-red-600 hover:text-red-800 transition-colors uppercase tracking-widest flex items-center gap-1"
+            >
+              🔒 Sign Out
+            </button>
+          </div>
           {isF && usdRate && (
             <div className="mt-2 flex items-center justify-center gap-2">
               <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
@@ -269,9 +395,30 @@ export default function HomePage() {
           />
         </div>
 
+        {/* Draft Saved Indicator */}
+        <div className="h-6 flex justify-end no-print">
+          {draftSaved && (
+            <span className="text-[10px] font-bold text-emerald-600 animate-bounce">
+              Draft saved ✓
+            </span>
+          )}
+          {saving && (
+            <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
+              Saving draft...
+            </span>
+          )}
+        </div>
+
         {/* ── Step Content ── */}
         <div key={step} className="animate-fade-in">
-          {renderStep()}
+          {loading ? (
+            <div className="py-20 text-center">
+              <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+              <p className="text-gray-500 animate-pulse">Restoring your draft...</p>
+            </div>
+          ) : (
+            renderStep()
+          )}
         </div>
 
         {/* ── Navigation ── */}
@@ -289,9 +436,10 @@ export default function HomePage() {
             <Button
               variant="primary"
               size="md"
-              onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              onClick={handleNext}
+              disabled={saving}
             >
-              {step === STEPS.length - 2 ? "View Certificate →" : "Next →"}
+              {saving ? "Saving..." : (step === STEPS.length - 2 ? "View Certificate →" : "Next →")}
             </Button>
           )}
         </div>

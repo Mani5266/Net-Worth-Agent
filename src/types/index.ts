@@ -113,3 +113,25 @@ export interface GenerateCertificateResponse {
   text?: string;
   error?: string;
 }
+
+// ─── Supabase Records ─────────────────────────────────────────────────────────
+
+export interface CertificateRecord {
+  id: string;
+  clientName: string;
+  purpose: string;
+  certDate: string;
+  status: "draft" | "completed";
+  createdAt: string;
+}
+
+export interface DocumentRecord {
+  id: string;
+  certificateId: string;
+  annexureType: string;
+  category: string;
+  fileUrl: string;
+  fileName: string;
+  fileType: string;
+  uploadedAt: string;
+}
