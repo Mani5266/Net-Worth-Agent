@@ -180,10 +180,13 @@ export function computeTotals(d: FormData): CertificateTotals {
   const movableINR   = sumRows(movRows);
   const savingsINR   = sumRows(savRows);
 
-  const incomeForeign    = sumForeignRows(d.incomeFR);
-  const immovableForeign = sumForeignRows(d.immovableFR);
-  const movableForeign   = sumForeignRows(d.movableFR);
-  const savingsForeign   = sumForeignRows(d.savingsFR);
+  const rate = parseFloat(d.exchangeRate) || 83; // Use 83 as default if not set
+
+  // Use manual foreign values if provided, otherwise compute from INR
+  const incomeForeign    = sumForeignRows(d.incomeFR) || (incomeINR / rate);
+  const immovableForeign = sumForeignRows(d.immovableFR) || (immovableINR / rate);
+  const movableForeign   = sumForeignRows(d.movableFR) || (movableINR / rate);
+  const savingsForeign   = sumForeignRows(d.savingsFR) || (savingsINR / rate);
 
   return {
     incomeINR,
