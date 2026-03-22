@@ -16,7 +16,7 @@ import { useFormData, INITIAL_STATE } from "@/hooks/useFormData";
 import { useExchangeRate } from "@/hooks/useExchangeRate";
 import { STEPS } from "@/constants";
 import { isForeignPurpose, buildCertificateText } from "@/lib/utils";
-import { saveCertificateDraft, updateCertificateDraft, getAllCertificates, getCertificate, renameCertificate } from "@/lib/db";
+import { saveCertificateDraft, updateCertificateDraft, getAllCertificates, getCertificate, renameCertificate, deleteCertificate } from "@/lib/db";
 import Link from "next/link";
 import { CertificateRecord, PurposeValue } from "@/types";
 import { Auth_UI } from "@/components/auth/Auth";
@@ -160,6 +160,19 @@ export default function HomePage() {
       loadHistory();
     } catch (err) {
       console.error("Failed to rename:", err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this certificate?")) return;
+    try {
+      await deleteCertificate(id);
+      if (certificateId === id) {
+        handleReset();
+      }
+      await loadHistory();
+    } catch (err) {
+      console.error("Failed to delete:", err);
     }
   };
 
@@ -447,17 +460,29 @@ export default function HomePage() {
                       )}
                       
                       {editingId !== cert.id && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingId(cert.id);
-                            setEditValue(cert.nickname || cert.clientName || "");
-                          }}
-                          className="absolute right-3 top-3.5 p-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-emerald-600 transition-all"
-                          title="Rename"
-                        >
-                          ✏️
-                        </button>
+                        <div className="absolute right-2 top-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(cert.id);
+                              setEditValue(cert.nickname || cert.clientName || "");
+                            }}
+                            className="p-1 text-gray-400 hover:text-emerald-600 transition-colors"
+                            title="Rename"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(cert.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            title="Delete"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))

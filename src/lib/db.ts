@@ -232,3 +232,26 @@ export async function getDocuments(certificateId: string): Promise<DocumentRecor
     uploadedAt: doc.uploaded_at,
   }));
 }
+/**
+ * Deletes a certificate and its associated documents from DB and Storage.
+ */
+export async function deleteCertificate(id: string): Promise<void> {
+  // 1. Get documents to delete from storage
+  const { data: docs } = await supabase
+    .from("documents")
+    .select("file_url")
+    .eq("certificate_id", id);
+    
+  if (docs && docs.length > 0) {
+    const paths = docs.map(d => d.file_url);
+    await supabase.storage.from("networth-documents").remove(paths);
+  }
+
+  // 2. Delete from certificates (DB will handle cascading to documents table)
+  const { error } = await supabase
+    .from("certificates")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}

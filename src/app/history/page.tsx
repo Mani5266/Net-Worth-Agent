@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAllCertificates, getCertificate } from "@/lib/db";
+import { getAllCertificates, getCertificate, deleteCertificate } from "@/lib/db";
 import { CertificateRecord } from "@/types";
 import { Button } from "@/components/ui";
 import Link from "next/link";
@@ -61,6 +61,17 @@ export default function HistoryPage() {
     } catch (err) {
       console.error("Failed to resume certificate:", err);
       alert("Failed to load certificate data.");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this certificate? This action cannot be undone.")) return;
+    try {
+      await deleteCertificate(id);
+      await loadCertificates();
+    } catch (err) {
+      console.error("Failed to delete certificate:", err);
+      alert("Failed to delete certificate.");
     }
   };
 
@@ -155,6 +166,14 @@ export default function HistoryPage() {
                           }}
                         >
                           View
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="px-4 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          onClick={() => handleDelete(cert.id)}
+                        >
+                          Delete
                         </Button>
                       </td>
                     </tr>
