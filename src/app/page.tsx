@@ -25,9 +25,6 @@ import type { Session } from "@supabase/supabase-js";
 
 export default function HomePage() {
   const [step, setStep] = useState(0);
-  const [aiText, setAiText] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const certRef = useRef<HTMLDivElement>(null);
 
@@ -202,38 +199,15 @@ export default function HomePage() {
   const { usdRate: liveRate, fetchedAt } = useExchangeRate();
   const overrideRate = data.exchangeRate ? parseFloat(data.exchangeRate) : null;
   const usdRate = overrideRate && overrideRate > 0 ? overrideRate : liveRate;
-  // ── AI Generation ────────────────────────────────────────────────────────────
-  const generateWithAI = useCallback(async () => {
-    setAiLoading(true);
-    setAiError("");
-    setAiText("");
-    try {
-      const res = await fetch("/api/generate-certificate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formData: data }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setAiText(json.text);
-      } else {
-        setAiError(json.error || "Generation failed.");
-      }
-    } catch {
-      setAiError("Network error. Please try again.");
-    } finally {
-      setAiLoading(false);
-    }
-  }, [data]);
 
   // ── Copy to Clipboard ────────────────────────────────────────────────────────
   const copyText = useCallback(() => {
-    const text = aiText || buildCertificateText(data);
+    const text = buildCertificateText(data);
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [aiText, data]);
+  }, [data]);
 
   // ── Print ────────────────────────────────────────────────────────────────────
   const printCertificate = () => window.print();
@@ -328,21 +302,6 @@ export default function HomePage() {
                 📄 Net Worth Certificate
               </h2>
               <div className="flex gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={generateWithAI}
-                  disabled={aiLoading}
-                >
-                  {aiLoading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Generating…
-                    </span>
-                  ) : (
-                    "✨ Refine with AI"
-                  )}
-                </Button>
                 <Button variant="secondary" size="sm" onClick={copyText}>
                   {copied ? "✓ Copied!" : "📋 Copy Text"}
                 </Button>
@@ -351,26 +310,6 @@ export default function HomePage() {
                 </Button>
               </div>
             </div>
-
-            {aiError && (
-              <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                {aiError}
-              </div>
-            )}
-
-            {/* AI text panel */}
-            {aiText && (
-              <div className="mb-5 no-print">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">
-                    ✨ AI-Refined Version
-                  </span>
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto text-gray-800">
-                  {aiText}
-                </div>
-              </div>
-            )}
 
             {/* Certificate preview */}
             <div className="print-full">
