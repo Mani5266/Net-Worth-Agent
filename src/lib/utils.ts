@@ -1,7 +1,12 @@
 import type { AnnexureRow, FormData, CertificateTotals, PurposeValue } from "@/types";
-import { FOREIGN_PURPOSES, CA_FIRM } from "@/constants";
+import { FOREIGN_PURPOSES, CA_FIRM, GOLD_REFERENCE_PRICES } from "@/constants";
 
 // ─── Number Formatting ────────────────────────────────────────────────────────
+
+/** Rounds to 2 decimal places (for foreign currency conversions) */
+export function roundTo2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 export function formatINR(value: number): string {
   if (!value) return "XXXX";
@@ -17,6 +22,102 @@ export function parseAmount(raw: string): number {
   return parseFloat(raw.replace(/,/g, "")) || 0;
 }
 
+// ─── Number to Words (Indian Rupees) ─────────────────────────────────────────
+
+const ONES = [
+  "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+  "Seventeen", "Eighteen", "Nineteen",
+];
+
+const TENS = [
+  "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+];
+
+/** Converts a number 0–99 to words */
+function twoDigitWords(n: number): string {
+  if (n < 20) return ONES[n] ?? "";
+  const ten = TENS[Math.floor(n / 10)] ?? "";
+  const one = ONES[n % 10] ?? "";
+  return one ? `${ten} ${one}` : ten;
+}
+
+/** Converts a number 0–999 to words */
+function threeDigitWords(n: number): string {
+  if (n === 0) return "";
+  if (n < 100) return twoDigitWords(n);
+  const hundreds = ONES[Math.floor(n / 100)] ?? "";
+  const remainder = n % 100;
+  const rest = remainder > 0 ? ` and ${twoDigitWords(remainder)}` : "";
+  return `${hundreds} Hundred${rest}`;
+}
+
+/**
+ * Converts an integer to words using the Indian numbering system
+ * (Crore, Lakh, Thousand, Hundred).
+ */
+function integerToWordsIndian(n: number): string {
+  if (n === 0) return "Zero";
+  if (n < 0) return `Minus ${integerToWordsIndian(-n)}`;
+
+  const parts: string[] = [];
+
+  // Crores (groups of 2 digits after the first 7-digit chunk)
+  const crores = Math.floor(n / 10_000_000);
+  if (crores > 0) {
+    // For crores > 99, recursively break down (e.g. 150 Crore)
+    parts.push(`${crores > 99 ? integerToWordsIndian(crores) : twoDigitWords(crores)} Crore`);
+    n %= 10_000_000;
+  }
+
+  // Lakhs (2 digits)
+  const lakhs = Math.floor(n / 100_000);
+  if (lakhs > 0) {
+    parts.push(`${twoDigitWords(lakhs)} Lakh`);
+    n %= 100_000;
+  }
+
+  // Thousands (2 digits)
+  const thousands = Math.floor(n / 1_000);
+  if (thousands > 0) {
+    parts.push(`${twoDigitWords(thousands)} Thousand`);
+    n %= 1_000;
+  }
+
+  // Hundreds + remainder
+  if (n > 0) {
+    parts.push(threeDigitWords(n));
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Converts a numeric amount to Indian Rupees in words.
+ *
+ * @example
+ *   numberToWordsINR(1_25_50_000) → "Rupees One Crore Twenty Five Lakh Fifty Thousand Only"
+ *   numberToWordsINR(45000.50)    → "Rupees Forty Five Thousand and Paise Fifty Only"
+ *   numberToWordsINR(0)           → "Rupees Zero Only"
+ */
+export function numberToWordsINR(amount: number): string {
+  if (!isFinite(amount)) return "Rupees Zero Only";
+
+  const absAmount = Math.abs(amount);
+  const intPart = Math.floor(absAmount);
+  const decPart = Math.round((absAmount - intPart) * 100);
+
+  const sign = amount < 0 ? "Minus " : "";
+  const rupeeWords = integerToWordsIndian(intPart);
+
+  if (decPart > 0) {
+    const paiseWords = twoDigitWords(decPart);
+    return `${sign}Rupees ${rupeeWords} and Paise ${paiseWords} Only`;
+  }
+
+  return `${sign}Rupees ${rupeeWords} Only`;
+}
+
 // ─── Date Formatting ──────────────────────────────────────────────────────────
 
 export function formatCertDate(isoDate: string): string {
@@ -27,6 +128,25 @@ export function formatCertDate(isoDate: string): string {
   const year  = d.getFullYear();
   return `${day}-${month}-${year}`;
 }
+/**
+ * Derives the Indian Financial Year (FY) from a date.
+ * FY runs April to March. E.g. Jan 2025 → FY 2024-25, Jul 2025 → FY 2025-26.
+ */
+export function deriveFinancialYear(isoDate: string): string {
+  if (!isoDate) return "2024-25";
+  const d = new Date(isoDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1-12
+  if (month <= 3) {
+    return `${year - 1}-${String(year).slice(-2)}`;
+  }
+  return `${year}-${String(year + 1).slice(-2)}`;
+}
+
+/**
+ * Derives the Indian Assessment Year (AY) from a date.
+ * AY = FY + 1. E.g. Jan 2025 (FY 2024-25) → AY 2025-26, Jul 2025 (FY 2025-26) → AY 2026-27.
+ */
 export function deriveAssessmentYear(isoDate: string): string {
   if (!isoDate) return "2025-26";
   const d = new Date(isoDate);
@@ -38,9 +158,8 @@ export function deriveAssessmentYear(isoDate: string): string {
   // If date is Apr-Dec 2024, FY is 2024-25, AY is 2025-26.
   if (month <= 3) {
     return `${year}-${String(year + 1).slice(-2)}`;
-  } else {
-    return `${year + 1}-${String(year + 2).slice(-2)}`;
   }
+  return `${year + 1}-${String(year + 2).slice(-2)}`;
 }
 // ─── Purpose Phrase ───────────────────────────────────────────────────────────
 
@@ -77,6 +196,46 @@ export function getPurposePhrase(purpose: PurposeValue | "", country: string): s
 
 export function isForeignPurpose(purpose: PurposeValue | ""): boolean {
   return FOREIGN_PURPOSES.includes(purpose as PurposeValue);
+}
+
+// ─── Gold Price Validation ────────────────────────────────────────────────────
+
+/**
+ * Estimates gold value from grams and returns a reference range.
+ * Useful for the CA to quickly verify whether the applicant's
+ * declared gold value is within a reasonable range.
+ */
+export function estimateGoldValue(grams: number): {
+  estimated22k: number;
+  estimated24k: number;
+  lowerBound: number; // 22k - 15% (for making charges, old gold, etc.)
+  upperBound: number; // 24k + 10% (for making charges, antique value, etc.)
+} {
+  const estimated22k = Math.round(grams * GOLD_REFERENCE_PRICES.price22kPerGram);
+  const estimated24k = Math.round(grams * GOLD_REFERENCE_PRICES.price24kPerGram);
+  return {
+    estimated22k,
+    estimated24k,
+    lowerBound: Math.round(estimated22k * 0.85),
+    upperBound: Math.round(estimated24k * 1.10),
+  };
+}
+
+/**
+ * Checks whether a declared gold value is within a reasonable range
+ * given the weight in grams. Returns a warning message if outside range,
+ * or null if acceptable.
+ */
+export function validateGoldValue(grams: number, declaredINR: number): string | null {
+  if (grams <= 0 || declaredINR <= 0) return null;
+  const { lowerBound, upperBound } = estimateGoldValue(grams);
+  if (declaredINR < lowerBound) {
+    return `Declared gold value (${formatINR(declaredINR)}) seems low for ${grams}g. Expected range: ${formatINR(lowerBound)} - ${formatINR(upperBound)}`;
+  }
+  if (declaredINR > upperBound) {
+    return `Declared gold value (${formatINR(declaredINR)}) seems high for ${grams}g. Expected range: ${formatINR(lowerBound)} - ${formatINR(upperBound)}`;
+  }
+  return null;
 }
 
 // ─── Annexure Row Summation ───────────────────────────────────────────────────
@@ -182,11 +341,14 @@ export function computeTotals(d: FormData): CertificateTotals {
 
   const rate = parseFloat(d.exchangeRate) || 83; // Use 83 as default if not set
 
-  // Use manual foreign values if provided, otherwise compute from INR
-  const incomeForeign    = sumForeignRows(d.incomeFR) || (incomeINR / rate);
-  const immovableForeign = sumForeignRows(d.immovableFR) || (immovableINR / rate);
-  const movableForeign   = sumForeignRows(d.movableFR) || (movableINR / rate);
-  const savingsForeign   = sumForeignRows(d.savingsFR) || (savingsINR / rate);
+  // Use manual foreign values if any row has a non-empty value, otherwise compute from INR.
+  // We check for non-empty strings rather than using `||` so that manual zero is respected.
+  const hasManualFR = (arr: string[]) => arr.some(v => v.trim() !== "");
+
+  const incomeForeign    = hasManualFR(d.incomeFR) ? sumForeignRows(d.incomeFR) : roundTo2(incomeINR / rate);
+  const immovableForeign = hasManualFR(d.immovableFR) ? sumForeignRows(d.immovableFR) : roundTo2(immovableINR / rate);
+  const movableForeign   = hasManualFR(d.movableFR) ? sumForeignRows(d.movableFR) : roundTo2(movableINR / rate);
+  const savingsForeign   = hasManualFR(d.savingsFR) ? sumForeignRows(d.savingsFR) : roundTo2(savingsINR / rate);
 
   return {
     incomeINR,
@@ -202,6 +364,19 @@ export function computeTotals(d: FormData): CertificateTotals {
   };
 }
 
+// ─── Gender Pronoun Helper ─────────────────────────────────────────────────────
+
+/**
+ * Derive possessive pronoun ("his" / "her") from the salutation.
+ * Falls back to "his/her" if salutation is not recognized.
+ */
+export function getPossessivePronoun(salutation: string): string {
+  const s = salutation.trim().toLowerCase().replace(/\.$/, "");
+  if (s === "mr") return "his";
+  if (s === "ms" || s === "mrs") return "her";
+  return "his/her";
+}
+
 // ─── Certificate Text Builder (for copy/print) ────────────────────────────────
 
 export function buildCertificateText(d: FormData): string {
@@ -215,29 +390,34 @@ export function buildCertificateText(d: FormData): string {
     label: row.label || `Savings Entry ${i + 1}`,
     inr: d.savingsRows?.[i]?.inr || "",
   }));
+  const hasNewSavingsModel = Object.keys(d.savingsEntries ?? {}).length > 0;
   const docs = d.supportingDocs.length > 0
     ? d.supportingDocs
     : ["Income tax return copies of Applicant.", "Valuation/self-declaration documents of immovable properties."];
 
+  const pronoun = getPossessivePronoun(d.salutation);
+
   let text = `TO WHOMSOEVER IT MAY CONCERN\n\nNETWORTH CERTIFICATE\n\n`;
-  text += `I, BODDU ABHISHEK, member of The Institute of Chartered Accountants of India, do hereby certify that I have reviewed the financial condition of the Applicant, ${applicantName}, with the view to furnish his net worth ${purposeTxt}. The Below detail of the assets are obtained as on ${dateStr}\n\n`;
+  text += `I, ${CA_FIRM.partnerName}, member of The Institute of Chartered Accountants of India, do hereby certify that I have reviewed the financial condition of the Applicant, ${applicantName}, with the view to furnish ${pronoun} net worth ${purposeTxt}. The Below detail of the assets are obtained as on ${dateStr}\n\n`;
 
   if (!isForeign) {
     text += `Sl. No. | SOURCES OF FUNDS       | INDIAN (Rs.)  | REFERENCE (ANNEXURES)\n`;
     text += `--------|------------------------|---------------|----------------------\n`;
-    text += `1       | Current Income         | ${formatINR(totals.incomeINR).padEnd(13)} | I\n`;
+    text += `1.      | Current Income         | ${formatINR(totals.incomeINR).padEnd(13)} | I\n`;
     text += `2.      | Immovable Assets       | ${formatINR(totals.immovableINR).padEnd(13)} | II\n`;
     text += `3.      | Movable Properties     | ${formatINR(totals.movableINR).padEnd(13)} | III\n`;
     text += `4.      | Current Savings        | ${formatINR(totals.savingsINR).padEnd(13)} | IV\n`;
-    text += `        | Total                  | ${formatINR(totals.grandINR).padEnd(13)} |\n\n`;
+    text += `        | Total                  | ${formatINR(totals.grandINR).padEnd(13)} |\n`;
+    text += `(${numberToWordsINR(totals.grandINR)})\n\n`;
   } else {
     text += `Sl. No. | SOURCES OF FUNDS       | INDIAN (Rs.)  | ${d.country.padEnd(14)} | REFERENCE\n`;
     text += `--------|------------------------|---------------|----------------|----------\n`;
-    text += `1       | Current Income         | ${formatINR(totals.incomeINR).padEnd(13)} | ${formatForeign(totals.incomeForeign).padEnd(14)} | I\n`;
+    text += `1.      | Current Income         | ${formatINR(totals.incomeINR).padEnd(13)} | ${formatForeign(totals.incomeForeign).padEnd(14)} | I\n`;
     text += `2.      | Immovable Assets       | ${formatINR(totals.immovableINR).padEnd(13)} | ${formatForeign(totals.immovableForeign).padEnd(14)} | II\n`;
     text += `3.      | Movable Properties     | ${formatINR(totals.movableINR).padEnd(13)} | ${formatForeign(totals.movableForeign).padEnd(14)} | III\n`;
     text += `4.      | Current Savings        | ${formatINR(totals.savingsINR).padEnd(13)} | ${formatForeign(totals.savingsForeign).padEnd(14)} | IV\n`;
-    text += `        | Total                  | ${formatINR(totals.grandINR).padEnd(13)} | ${formatForeign(totals.grandForeign).padEnd(14)} |\n\n`;
+    text += `        | Total                  | ${formatINR(totals.grandINR).padEnd(13)} | ${formatForeign(totals.grandForeign).padEnd(14)} |\n`;
+    text += `(${numberToWordsINR(totals.grandINR)})\n\n`;
   }
 
   text += `The above figures are compiled from the following documents and certificates submitted before me:\n`;
@@ -245,25 +425,72 @@ export function buildCertificateText(d: FormData): string {
 
   text += `\nANNEXURE-I    CURRENT INCOME\n`;
   text += `Particulars                                         | Indian (Rs.)\n`;
-  d.incomeRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+
+  if (d.incomeTypes.length > 0) {
+    d.incomeTypes.forEach((person, i) => {
+      const personName = d.incomeLabels[person]?.trim() || (person === "Self" ? (d.fullName || "[Name]") : "[Name]");
+      const base = person === "Self"
+        ? "Income of the Applicant"
+        : `Income of the Applicant\u2019s ${person}`;
+      const label = `${base} \u2013 ${personName}`;
+      const inr = d.incomeRows[i]?.inr ?? "";
+      text += `${label.padEnd(52)} | ${inr ? formatINR(parseAmount(inr)) : ""}\n`;
+    });
+  } else {
+    d.incomeRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+  }
   text += `Total                                               | ${formatINR(totals.incomeINR)}\n`;
 
   text += `\nANNEXURE – II    IMMOVABLE ASSETS\n`;
+  if (d.immovableTypes.length > 0) {
+    const displayPersons = d.immovableTypes.map(t => {
+      const name = d.immovableLabels[t]?.trim();
+      return name ? `${t} (${name})` : t;
+    }).join(", ");
+    text += `Properties Declared For: ${displayPersons}\n`;
+  }
   text += `Particulars                                         | Indian (Rs.)\n`;
   d.immovableRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
   text += `Total                                               | ${formatINR(totals.immovableINR)}\n`;
 
   text += `\nANNEXURE – III    MOVABLE PROPERTIES\n`;
+  // New person-based model: use movableRows directly (already has full labels)
+  const hasNewMovableModel = Object.keys(d.movableAssets ?? {}).length > 0;
+  if (hasNewMovableModel && d.movableTypes.length > 0) {
+    const displayPersons = d.movableTypes.map(t => {
+      const name = d.movableLabels[t]?.trim();
+      return name ? `${t} (${name})` : t;
+    }).join(", ");
+    text += `Assets Declared For: ${displayPersons}\n`;
+  }
   text += `Particulars                                         | Indian (Rs.)\n`;
-  d.movableRows.forEach((row, i) => {
-    const label = (i === 0 && d.goldGrams) ? `Gold ornaments weighing ${d.goldGrams} gms (In the Name of the Applicant)` : row.label;
-    text += `${label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`;
-  });
+  if (hasNewMovableModel) {
+    d.movableRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+  } else {
+    // Legacy: old category-based model
+    d.movableRows.forEach((row, i) => {
+      const label = (i === 0 && d.goldGrams) ? `Gold ornaments weighing ${d.goldGrams} gms (In the Name of the Applicant)` : row.label;
+      text += `${label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`;
+    });
+  }
   text += `Total                                               | ${formatINR(totals.movableINR)}\n`;
 
   text += `\nANNEXURE – IV    CURRENT SAVINGS\n`;
+  // New person-based model: use savingsRows directly (already has full labels)
+  if (hasNewSavingsModel && d.savingsTypes.length > 0) {
+    const displayPersons = d.savingsTypes.map(t => {
+      const name = d.savingsLabels[t]?.trim();
+      return name ? `${t} (${name})` : t;
+    }).join(", ");
+    text += `Savings Declared For: ${displayPersons}\n`;
+  }
   text += `Particulars                                         | Indian (Rs.)\n`;
-  savRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+  if (hasNewSavingsModel) {
+    (d.savingsRows ?? []).forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+  } else {
+    // Legacy: old category-based model
+    savRows.forEach(row => { text += `${row.label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`; });
+  }
   text += `Total                                               | ${formatINR(totals.savingsINR)}\n`;
 
   text += `\nFor ${CA_FIRM.name},\n${CA_FIRM.type},\nFRN ${CA_FIRM.frn}\n\n`;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { EXCHANGE_RATE_FALLBACK_USD_INR } from "@/constants";
 
 interface ExchangeRateState {
   /** How many INR per 1 USD (e.g. 83.5). Divide INR by this to get USD. */
@@ -41,7 +42,7 @@ export function useExchangeRate(): ExchangeRateState {
             ...prev,
             loading: false,
             error: "Could not fetch live rate",
-            usdRate: prev.usdRate ?? 83.5, // keep stale or fallback
+            usdRate: prev.usdRate ?? EXCHANGE_RATE_FALLBACK_USD_INR, // keep stale or fallback
           }));
         }
       }

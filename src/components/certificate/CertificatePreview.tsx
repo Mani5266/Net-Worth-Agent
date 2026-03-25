@@ -4,9 +4,9 @@ import { forwardRef } from "react";
 import type { FormData } from "@/types";
 import { CA_FIRM } from "@/constants";
 import {
-  deriveAssessmentYear,
   isForeignPurpose,
   getPurposePhrase,
+  getPossessivePronoun,
   formatCertDate,
   formatINR,
   formatForeign,
@@ -14,6 +14,7 @@ import {
   computeTotals,
   buildSavingsRows,
   buildMovableRows,
+  numberToWordsINR,
 } from "@/lib/utils";
 
 interface CertificateProps {
@@ -78,47 +79,74 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
     const dateStr = formatCertDate(data.certDate);
     const purposeTxt = getPurposePhrase(data.purpose, data.country);
     const totals = computeTotals(data);
+    const pronoun = getPossessivePronoun(data.salutation);
 
-    const assessmentYear = deriveAssessmentYear(data.certDate);
-    const dynamicIncomeLabel = `Income of the Applicant – ${data.fullName || "[Name of Applicant]"} for the Assessment Year ${assessmentYear}`;
+    // Build person-based income rows:
+    //   "Income of the Applicant – Mankala Akhil"
+    //   "Income of the Applicant's Father – Ramesh Kumar"
+    const incRows = data.incomeTypes.length > 0
+      ? data.incomeTypes.map((person, i) => {
+          const personName = data.incomeLabels[person]?.trim()
+            || (person === "Self" ? (data.fullName || "[Name]") : "[Name]");
+          const base = person === "Self"
+            ? "Income of the Applicant"
+            : `Income of the Applicant\u2019s ${person}`;
+          const label = `${base} \u2013 ${personName}`;
+          return { label, inr: data.incomeRows[i]?.inr ?? "" };
+        })
+      : [{ label: "Income of the Applicant", inr: "" }];
 
-    const rawIncRows = data.incomeRows.length > 0 ? data.incomeRows : [{ label: "Income of the Applicant", inr: "" }];
-    const incRows = rawIncRows.map((row, i) => {
-      if (i === 0 && (row.label === "Income of the Applicant" || row.label.startsWith("Income of the Applicant –"))) {
-        return { ...row, label: dynamicIncomeLabel };
-      }
-      return row;
-    });
+    // Immovable rows are now pre-built with person-based labels by StepImmovable.
+    // If immovableProperties exist (new model), use immovableRows directly.
+    // Fall back to old single-address logic for backward compat with old drafts.
+    const hasNewModel = Object.keys(data.immovableProperties ?? {}).length > 0;
+    const immRows = hasNewModel
+      ? (data.immovableRows.length > 0
+          ? data.immovableRows
+          : [{ label: "Address of the immovable property and its details.", inr: "" }])
+      : data.immovableRows.map((row, i) => {
+          // Legacy: single propertyAddress applied to first row
+          if (i === 0 && data.propertyAddress) {
+            return { ...row, label: `Address of the immovable property \u2014 ${data.propertyAddress}` };
+          }
+          return row;
+        });
 
-    const immovableTableLabel = data.propertyAddress
-      ? `Address of the immovable property — ${data.propertyAddress}`
-      : "Address of the immovable property and its details.";
+    // Movable rows: if movableAssets exist (new person-based model), use movableRows directly.
+    // Fall back to old buildMovableRows for backward compat with old drafts.
+    const hasNewMovableModel = Object.keys(data.movableAssets ?? {}).length > 0;
+    const movRows = hasNewMovableModel
+      ? (data.movableRows.length > 0
+          ? data.movableRows
+          : [{ label: "Specify movable asset details", inr: "" }])
+      : buildMovableRows(data).map((row, i) => ({
+          ...row,
+          inr: data.movableRows[i]?.inr || "",
+        }));
 
-    const immRows = data.immovableRows.map((row, i) => {
-      if (i === 0 && (row.label === "Address of the immovable property and its details." || row.label.startsWith("Address of the immovable property —"))) {
-        return { ...row, label: immovableTableLabel };
-      }
-      return row;
-    });
-
-    const movRows = buildMovableRows(data).map((row, i) => ({
-      ...row,
-      inr: data.movableRows[i]?.inr || "",
-    }));
-
-    const savRows = buildSavingsRows(data).map((row, i) => ({
-      ...row,
-      label: row.label || `Savings Entry ${i + 1}`,
-      inr: data.savingsRows?.[i]?.inr || "",
-    }));
+    // Savings rows: if savingsEntries exist (new person-based model), use savingsRows directly.
+    // Fall back to old buildSavingsRows for backward compat with old drafts.
+    const hasNewSavingsModel = Object.keys(data.savingsEntries ?? {}).length > 0;
+    const savRows = hasNewSavingsModel
+      ? ((data.savingsRows ?? []).length > 0
+          ? (data.savingsRows ?? [])
+          : [{ label: "Savings Details", inr: "" }])
+      : buildSavingsRows(data).map((row, i) => ({
+          ...row,
+          label: row.label || `Savings Entry ${i + 1}`,
+          inr: data.savingsRows?.[i]?.inr || "",
+        }));
     
     // Combine manual checkmarks with uploaded file names for the "compiled from" list
     const incomeFileNames = Object.values(data.incomeDocs).flatMap(docs => docs.map(d => d.name));
+    const immovableFileNames = Object.values(data.immovableDocs).flatMap(docs => docs.map(d => d.name));
+    const movableFileNames = Object.values(data.movableDocs).flatMap(docs => docs.map(d => d.name));
+    const savingsFileNames = Object.values(data.savingsDocs).flatMap(docs => docs.map(d => d.name));
     const baseDocs = data.supportingDocs.length > 0 ? data.supportingDocs : [
       "Income tax return copies of Applicant.",
       "Valuation/self-declaration documents of immovable properties.",
     ];
-    const docs = [...baseDocs, ...incomeFileNames];
+    const docs = [...baseDocs, ...incomeFileNames, ...immovableFileNames, ...movableFileNames, ...savingsFileNames];
 
     const cl = data.country || "Foreign Currency";
     const overrideRate = data.exchangeRate ? parseFloat(data.exchangeRate) : null;
@@ -151,10 +179,10 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
 
         {/* ── Body paragraph ── */}
         <p style={{ textAlign: "justify", marginBottom: 16 }}>
-          I, <strong>BODDU ABHISHEK</strong>, member of The Institute of Chartered Accountants of
+          I, <strong>{CA_FIRM.partnerName}</strong>, member of The Institute of Chartered Accountants of
           India, do hereby certify that I have reviewed the financial condition of the Applicant,{" "}
           <strong style={{ textDecoration: "underline" }}>{name}</strong>, with the view to furnish
-          his net worth <em>{purposeTxt}</em>. The Below detail of the assets are obtained as on{" "}
+          {" "}{pronoun} net worth <em>{purposeTxt}</em>. The Below detail of the assets are obtained as on{" "}
           <strong>{dateStr}</strong>
         </p>
 
@@ -171,7 +199,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
             </thead>
             <tbody>
               {[
-                { n: "1",  l: "Current Income",    v: formatINR(totals.incomeINR),    r: "I" },
+                { n: "1.",  l: "Current Income",    v: formatINR(totals.incomeINR),    r: "I" },
                 { n: "2.", l: "Immovable Assets",   v: formatINR(totals.immovableINR), r: "II" },
                 { n: "3.", l: "Movable Properties", v: formatINR(totals.movableINR),   r: "III" },
                 { n: "4.", l: "Current Savings",    v: formatINR(totals.savingsINR),   r: "IV" },
@@ -187,6 +215,11 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
                 <td style={td()} colSpan={2}><strong><u>Total</u></strong></td>
                 <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
                 <td style={td()} />
+              </tr>
+              <tr>
+                <td style={td({ fontSize: 11, fontStyle: "italic", color: "#374151" })} colSpan={4}>
+                  ({numberToWordsINR(totals.grandINR)})
+                </td>
               </tr>
             </tbody>
           </table>
@@ -204,7 +237,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
               </thead>
               <tbody>
                 {[
-                  { n: "1",  l: "Current Income",    v: formatINR(totals.incomeINR),    f: formatForeign(totals.incomeForeign),    r: "I" },
+                  { n: "1.",  l: "Current Income",    v: formatINR(totals.incomeINR),    f: formatForeign(totals.incomeForeign),    r: "I" },
                   { n: "2.", l: "Immovable Assets",   v: formatINR(totals.immovableINR), f: formatForeign(totals.immovableForeign), r: "II" },
                   { n: "3.", l: "Movable Properties", v: formatINR(totals.movableINR),   f: formatForeign(totals.movableForeign),   r: "III" },
                   { n: "4.", l: "Current Savings",    v: formatINR(totals.savingsINR),   f: formatForeign(totals.savingsForeign),   r: "IV" },
@@ -222,6 +255,11 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
                   <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
                   <td style={td({ textAlign: "right" })}><strong>{formatForeign(totals.grandForeign)}</strong></td>
                   <td style={td()} />
+                </tr>
+                <tr>
+                  <td style={td({ fontSize: 11, fontStyle: "italic", color: "#374151" })} colSpan={5}>
+                    ({numberToWordsINR(totals.grandINR)})
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -250,7 +288,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.incomeTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Income Sources: {getDisplayTypes(data.incomeTypes, data.incomeLabels)}</em>
+            <em>Income Declared For: {getDisplayTypes(data.incomeTypes, data.incomeLabels)}</em>
           </p>
         )}
         <AnnexTable rows={incRows} total={totals.incomeINR} />
@@ -261,7 +299,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.immovableTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Property Types: {getDisplayTypes(data.immovableTypes, data.immovableLabels)}</em>
+            <em>Properties Declared For: {getDisplayTypes(data.immovableTypes, data.immovableLabels)}</em>
           </p>
         )}
         <AnnexTable
@@ -275,7 +313,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.movableTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Asset Types: {getDisplayTypes(data.movableTypes, data.movableLabels)}</em>
+            <em>Assets Declared For: {getDisplayTypes(data.movableTypes, data.movableLabels)}</em>
           </p>
         )}
         <AnnexTable
@@ -289,7 +327,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.savingsTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Categories: {getDisplayTypes(data.savingsTypes, data.savingsLabels)}</em>
+            <em>Savings Declared For: {getDisplayTypes(data.savingsTypes, data.savingsLabels)}</em>
           </p>
         )}
         <AnnexTable rows={savRows} total={totals.savingsINR} />

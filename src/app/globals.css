@@ -2,17 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* ─── Base ─────────────────────────────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: linear-gradient(160deg, #f0fdf4 0%, #ffffff 55%, #f0f9ff 100%);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   min-height: 100vh;
 }
+
+/* ─── Animations ───────────────────────────────────────────────────────────── */
 
 @keyframes fadeSlideIn {
   from {
@@ -39,16 +40,77 @@ body {
   animation: shake 0.2s ease-in-out 0s 2;
 }
 
-/* Print styles for certificate */
+/* ─── Focus Ring Utility ───────────────────────────────────────────────────── */
+
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:ring-offset-1;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ─── Print ────────────────────────────────────────────────────────────────── */
+
 @media print {
+  @page {
+    size: A4;
+    margin: 15mm 18mm;
+  }
+
   .no-print {
     display: none !important;
   }
+
   body {
     background: white !important;
+    font-size: 12pt;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+
   .print-full {
     padding: 0 !important;
     margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Avoid page breaks inside tables and signature blocks */
+  table, thead, tbody, tr {
+    page-break-inside: avoid;
+  }
+
+  /* Each annexure starts on a new page for readability */
+  .print-full p[style*="fontWeight: 700"] {
+    page-break-before: auto;
+  }
+
+  /* Signature block should not be orphaned */
+  .print-full > div:last-child {
+    page-break-inside: avoid;
+  }
+
+  /* Remove shadows and borders from containers */
+  .print-full > div {
+    box-shadow: none !important;
+    border-radius: 0 !important;
   }
 }

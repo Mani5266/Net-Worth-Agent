@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback } from "react";
+import { Paperclip, FolderUp, FileText, ImageIcon, X } from "lucide-react";
 import type { UploadedDoc } from "@/types";
 
 interface FileUploadProps {
@@ -45,32 +46,40 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
   );
 
   const iconForFile = (name: string) =>
-    name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️";
+    name.toLowerCase().endsWith(".pdf")
+      ? <FileText className="w-3.5 h-3.5 text-red-500 shrink-0" />
+      : <ImageIcon className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
 
   return (
     <div className="mt-2 mb-3">
-      <p className="text-xs font-semibold text-emerald-800 mb-1.5">
-        📎 Documents for <span className="italic">{label}</span>
+      <p className="text-xs font-semibold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+        <Paperclip className="w-3.5 h-3.5" />
+        Documents for <span className="italic">{label}</span>
       </p>
 
       {/* Drop zone */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Upload documents for ${label}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
         className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed
           rounded-xl px-4 py-4 cursor-pointer transition-all text-center
+          focus:outline-none focus:ring-2 focus:ring-emerald-600/20
           ${dragging
             ? "border-emerald-500 bg-emerald-50"
-            : "border-gray-200 hover:border-emerald-400 bg-gray-50 hover:bg-emerald-50"
+            : "border-slate-200 hover:border-emerald-400 bg-slate-50 hover:bg-emerald-50"
           }`}
       >
-        <span className="text-xl">📁</span>
-        <p className="text-xs text-gray-500">
+        <FolderUp className="w-5 h-5 text-slate-400" />
+        <p className="text-xs text-slate-500">
           Drag &amp; drop or <span className="text-emerald-700 font-semibold">click to upload</span>
         </p>
-        <p className="text-[10px] text-gray-400">{hint || "PDF or JPG accepted"}</p>
+        <p className="text-[10px] text-slate-400">{hint || "PDF or JPG accepted"}</p>
         <input
           ref={inputRef}
           type="file"
@@ -78,6 +87,7 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
+          aria-label={`File input for ${label}`}
         />
       </div>
 
@@ -87,19 +97,19 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
           {docs.map((doc, i) => (
             <li
               key={i}
-              className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-1.5 text-xs"
+              className="flex items-center justify-between bg-white border border-slate-100 rounded-lg px-3 py-1.5 text-xs"
             >
               <span className="flex items-center gap-1.5 truncate">
-                <span>{iconForFile(doc.name)}</span>
-                <span className="truncate max-w-[200px] text-gray-700">{doc.name}</span>
-                <span className="text-gray-400 shrink-0">({formatSize(doc.size)})</span>
+                {iconForFile(doc.name)}
+                <span className="truncate max-w-[200px] text-slate-700">{doc.name}</span>
+                <span className="text-slate-400 shrink-0">({formatSize(doc.size)})</span>
               </span>
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(i); }}
-                className="ml-2 text-red-400 hover:text-red-600 font-bold shrink-0"
-                title="Remove"
+                className="ml-2 p-0.5 text-red-400 hover:text-red-600 rounded transition-colors shrink-0"
+                aria-label={`Remove ${doc.name}`}
               >
-                ✕
+                <X className="w-3.5 h-3.5" />
               </button>
             </li>
           ))}

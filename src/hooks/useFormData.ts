@@ -2,35 +2,28 @@ import { useState, useCallback } from "react";
 import type { FormData, AnnexureRow, UploadedDoc } from "@/types";
 import { uploadDocument } from "@/lib/db";
 
-const INITIAL_INCOME_ROWS: AnnexureRow[] = [
-  { label: "Income of the Applicant", inr: "" },
-];
+const INITIAL_INCOME_ROWS: AnnexureRow[] = [];
 
-const INITIAL_IMMOVABLE_ROWS: AnnexureRow[] = [
-  { label: "Address of the immovable property and its details.", inr: "" },
-];
+const INITIAL_IMMOVABLE_ROWS: AnnexureRow[] = [];
 
-const INITIAL_MOVABLE_ROWS: AnnexureRow[] = [
-  { label: "Gold ornaments weighing (gms) — In the Name of the Applicant", inr: "" },
-  { label: "Any other Movable Property", inr: "" },
-];
+const INITIAL_MOVABLE_ROWS: AnnexureRow[] = [];
 
 export const INITIAL_STATE: FormData = {
   // Step 1
   purpose: "",
   country: "",
-  certDate: new Date().toISOString().split("T")[0],
+  certDate: new Date().toISOString().split("T")[0] ?? "",
   exchangeRate: "",
   // Step 2
   salutation: "Mr.",
   fullName: "",
-  pan: "",
+  passportNumber: "",
   udin: "",
   // Step 3
   incomeTypes: [],
   incomeLabels: {},
   incomeRows: INITIAL_INCOME_ROWS,
-  incomeFR: [""],
+  incomeFR: [],
   incomeDocs: {},
   immovableDocs: {},
   movableDocs: {},
@@ -38,18 +31,21 @@ export const INITIAL_STATE: FormData = {
   // Step 4
   immovableTypes: [],
   immovableLabels: {},
+  immovableProperties: {},
   immovableRows: INITIAL_IMMOVABLE_ROWS,
-  immovableFR: [""],
+  immovableFR: [],
   propertyAddress: "",
   // Step 5
   movableTypes: [],
   movableLabels: {},
+  movableAssets: {},
   movableRows: INITIAL_MOVABLE_ROWS,
-  movableFR: ["", ""],
+  movableFR: [],
   goldGrams: "",
   // Step 6
   savingsTypes: [],
   savingsLabels: {},
+  savingsEntries: {},
   savingsRows: null,
   savingsFR: [],
   bankDetails: "",
@@ -77,9 +73,6 @@ export function useFormData() {
           const next = arr.includes(item)
             ? arr.filter((x) => x !== item)
             : [...arr, item];
-          if (field === "savingsTypes") {
-            return { ...prev, [field]: next, savingsRows: null };
-          }
           return { ...prev, [field]: next };
         });
       },
@@ -93,7 +86,6 @@ export function useFormData() {
         setData((prev) => ({
           ...prev,
           [field]: { ...(prev[field] as Record<string, string>), [type]: value },
-          savingsRows: field === "savingsLabels" ? null : (prev.savingsRows),
         }));
       },
     []
@@ -105,7 +97,10 @@ export function useFormData() {
       (index: number, value: string) => {
         setData((prev) => {
           const rows = [...prev[field]];
-          rows[index] = { ...rows[index], inr: value };
+          const existing = rows[index];
+          if (existing) {
+            rows[index] = { ...existing, inr: value };
+          }
           return { ...prev, [field]: rows };
         });
       },
@@ -125,56 +120,6 @@ export function useFormData() {
     []
   );
 
-  // Update savings row INR
-  const updateSavingsRow = useCallback((index: number, value: string) => {
-    setData((prev) => {
-      const rows = [...(prev.savingsRows ?? [])];
-      rows[index] = { ...rows[index], inr: value };
-      return { ...prev, savingsRows: rows };
-    });
-  }, []);
-
-  // Separate handler for savings foreign rows
-  const updateSavingsFR = useCallback((index: number, value: string) => {
-    setData((prev) => {
-      const rows = [...prev.savingsFR];
-      rows[index] = value;
-      return { ...prev, savingsFR: rows };
-    });
-  }, []);
-
-  // Reset savings rows (rebuilds from types)
-  const resetSavingsRows = useCallback(() => {
-    setData((prev) => ({ ...prev, savingsRows: null }));
-  }, []);
-
-  // Add insurance policy
-  const addPolicy = useCallback(() => {
-    setData((prev) => ({
-      ...prev,
-      policies: [...prev.policies, ""],
-      savingsRows: null,
-    }));
-  }, []);
-
-  // Update a policy
-  const updatePolicy = useCallback((index: number, value: string) => {
-    setData((prev) => {
-      const policies = [...prev.policies];
-      policies[index] = value;
-      return { ...prev, policies, savingsRows: null };
-    });
-  }, []);
-
-  // Remove a policy
-  const removePolicy = useCallback((index: number) => {
-    setData((prev) => ({
-      ...prev,
-      policies: prev.policies.filter((_, i) => i !== index),
-      savingsRows: null,
-    }));
-  }, []);
-
   // Generic document handlers to avoid extreme repetition
   const addDocs = useCallback((field: "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs") => 
     (type: string, files: File[], certificateId?: string) => {
@@ -189,8 +134,8 @@ export function useFormData() {
             try {
               const annexureType = field.replace("Docs", "");
               supabaseUrl = await uploadDocument(certificateId, annexureType, type, file);
-            } catch (err) {
-              console.error("Supabase upload failed:", err);
+            } catch {
+              // Upload failed — doc will still be saved locally via dataUrl
             }
           }
 
@@ -247,12 +192,6 @@ export function useFormData() {
     updateLabel,
     updateAnnexureRow,
     updateForeignRow,
-    updateSavingsRow,
-    resetSavingsRows,
-    updateSavingsFR,
-    addPolicy,
-    updatePolicy,
-    removePolicy,
     addIncomeDocs,
     removeIncomeDoc,
     addImmovableDocs,

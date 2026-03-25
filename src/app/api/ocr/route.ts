@@ -5,6 +5,7 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
+import { requireAuth } from "@/lib/auth-guard";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -18,20 +19,20 @@ const MODELS_TO_TRY = [
 ];
 
 const DOCUMENT_PROMPTS: Record<string, string> = {
-  pan: `You are an expert at reading Indian PAN (Permanent Account Number) cards.
-Extract the following fields from this PAN card image:
+  passport: `You are an expert at reading Indian Passports.
+Extract the following fields from this passport image:
 
-1. **fullName** — The name of the cardholder (not the father's name). Use TITLE CASE.
-2. **pan** — The 10-character PAN number (format: AAAAA9999A, 5 letters + 4 digits + 1 letter).
+1. **fullName** — The full name of the passport holder. Use TITLE CASE.
+2. **passportNumber** — The passport number (format: 1 uppercase letter + 7 digits, e.g. J1234567).
 
 Return ONLY a JSON object with this exact shape:
-{"fullName": "...", "pan": "..."}
+{"fullName": "...", "passportNumber": "..."}
 
 Rules:
 - If a field is not clearly visible, return an empty string for that field.
-- The PAN must be exactly 10 characters matching the pattern [A-Z]{5}[0-9]{4}[A-Z]{1}.
+- The passport number must be exactly 8 characters matching the pattern [A-Z][0-9]{7}.
 - Do NOT include any markdown formatting, code fences, or extra text.
-- Do NOT include father's name, date of birth, or any other field.`,
+- Do NOT include date of birth, address, or any other field.`,
 
   aadhaar: `You are an expert at reading Indian Aadhaar cards.
 Extract the following fields from this Aadhaar card image:
@@ -52,8 +53,8 @@ Rules:
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function isValidDocumentType(type: unknown): type is "pan" | "aadhaar" {
-  return type === "pan" || type === "aadhaar";
+function isValidDocumentType(type: unknown): type is "passport" | "aadhaar" {
+  return type === "passport" || type === "aadhaar";
 }
 
 function extractMimeType(base64: string): { mimeType: string; data: string } {
@@ -66,16 +67,20 @@ function extractMimeType(base64: string): { mimeType: string; data: string } {
   return { mimeType: "image/jpeg", data: base64 };
 }
 
-function validatePAN(pan: string): boolean {
-  return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan);
+function validatePassport(passportNumber: string): boolean {
+  return /^[A-Z][0-9]{7}$/.test(passportNumber);
 }
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
+    // 0. Authentication check
+    const authResult = await requireAuth();
+    if ("error" in authResult) return authResult.error;
+
     // 1. Rate limiting
-    const identifier = getClientIdentifier(req);
+    const identifier = getClientIdentifier(req, authResult.userId);
     const rateResult = await ocrRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -107,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     if (!isValidDocumentType(documentType)) {
       return NextResponse.json(
-        { success: false, error: "Invalid 'documentType'. Must be 'pan' or 'aadhaar'." },
+        { success: false, error: "Invalid 'documentType'. Must be 'passport' or 'aadhaar'." },
         { status: 400 }
       );
     }
@@ -156,13 +161,14 @@ export async function POST(req: NextRequest) {
 
     for (const model of MODELS_TO_TRY) {
       try {
-        console.log(`[OCR] Attempting ${documentType} extraction with model: ${model}`);
-
         const aiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
             body: JSON.stringify({
               contents: [
                 {
@@ -205,18 +211,13 @@ export async function POST(req: NextRequest) {
 
         const extracted = JSON.parse(jsonMatch[0]);
 
-        // 8. Log extraction event (never log the image itself)
-        console.log(
-          `[OCR] Success | type=${documentType} | model=${model} | timestamp=${new Date().toISOString()}`
-        );
-
-        // 9. Post-process and return based on document type
-        if (documentType === "pan") {
-          const pan = typeof extracted.pan === "string" ? extracted.pan.toUpperCase().trim() : "";
+        // 8. Post-process and return based on document type
+        if (documentType === "passport") {
+          const passportNumber = typeof extracted.passportNumber === "string" ? extracted.passportNumber.toUpperCase().trim() : "";
           return NextResponse.json({
             success: true,
             fullName: typeof extracted.fullName === "string" ? extracted.fullName.trim() : "",
-            pan: validatePAN(pan) ? pan : "",
+            passportNumber: validatePassport(passportNumber) ? passportNumber : "",
             modelUsed: model,
           });
         }

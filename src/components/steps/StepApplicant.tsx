@@ -1,93 +1,121 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import Tesseract from "tesseract.js";
 import { Section, Input, Select, Button, InfoBadge } from "@/components/ui";
 import { SALUTATIONS } from "@/constants";
-import type { FormData, SalutationType } from "@/types";
+import { useFormContext } from "@/hooks/useFormContext";
+import type { SalutationType } from "@/types";
 
-interface StepApplicantProps {
-  data: FormData;
-  onChange: <K extends keyof FormData>(field: K, value: FormData[K]) => void;
-}
-
-export function StepApplicant({ data, onChange }: StepApplicantProps) {
+export function StepApplicant() {
+  const { data, updateField } = useFormContext();
   const [extracting, setExtracting] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handlePanUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePassportUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      setStatus("error");
+      setErrorMessage("File too large. Maximum 5MB.");
+      return;
+    }
+
+    // Validate file type
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
+    if (!validTypes.includes(file.type)) {
+      setStatus("error");
+      setErrorMessage("Unsupported file type. Please upload a JPEG, PNG, or PDF.");
+      return;
+    }
+
     setExtracting(true);
     setStatus("idle");
-    
+    setErrorMessage("");
+
     try {
-      // Step 1: Client-side OCR
-      const { data: { text } } = await Tesseract.recognize(file, 'eng');
-      
-      // Step 2: Server-side AI parsing
-      const res = await fetch("/api/extract-pan", {
+      const base64 = await fileToBase64(file);
+
+      const res = await fetch("/api/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          image: base64,
+          documentType: "passport",
+        }),
       });
+
+      if (res.status === 429) {
+        setStatus("error");
+        setErrorMessage("Too many requests. Please try again later.");
+        return;
+      }
+
+      if (res.status === 413) {
+        setStatus("error");
+        setErrorMessage("Image too large. Please use a smaller file.");
+        return;
+      }
+
       const json = await res.json();
-      
+
       if (json.success) {
-        if (json.fullName) onChange("fullName", json.fullName);
-        if (json.pan) onChange("pan", json.pan.toUpperCase());
+        if (json.fullName) updateField("fullName", json.fullName);
+        if (json.passportNumber) updateField("passportNumber", json.passportNumber.toUpperCase());
         setStatus("success");
       } else {
         setStatus("error");
+        setErrorMessage(json.error || "Could not extract details from the image.");
       }
-    } catch (err) {
-      console.error("Extraction error:", err);
+    } catch {
       setStatus("error");
+      setErrorMessage("Network error. Please check your connection and try again.");
     } finally {
       setExtracting(false);
     }
-  }, [onChange]);
+  }, [updateField]);
 
   return (
-    <Section title="👤 Applicant Details">
+    <Section title="Applicant Details">
       <div className="flex flex-col gap-5">
-        
-        {/* Secure PAN Extraction */}
+
+        {/* Secure Passport Extraction */}
         <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4">
           <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-3 flex items-center gap-2">
-            🛡️ Secure PAN Auto-Fill
+            Secure Passport Auto-Fill
           </p>
           <div className="flex items-center gap-4">
             <div className="relative">
               <input
                 type="file"
-                accept="image/*,.pdf"
-                onChange={handlePanUpload}
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                onChange={handlePassportUpload}
                 disabled={extracting}
                 className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
               />
               <Button variant="outline" size="sm" disabled={extracting}>
-                {extracting ? "⚡ Extracting..." : "📷 Upload PAN Card"}
+                {extracting ? "Extracting..." : "Upload Passport"}
               </Button>
             </div>
-            <p className="text-[11px] text-gray-500 leading-tight">
-              Extract name &amp; PAN automatically.<br/>
-              <span className="text-emerald-700 font-medium">✨ Fast &amp; Secure</span>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              Extract name &amp; passport number automatically.<br/>
+              <span className="text-emerald-700 font-medium">Processed securely on our server</span>
             </p>
           </div>
           {status === "success" && (
             <p className="mt-2 text-[11px] text-emerald-700 font-bold animate-pulse">
-              ✅ Details extracted and auto-filled!
+              Details extracted and auto-filled!
             </p>
           )}
           {status === "error" && (
             <p className="mt-2 text-[11px] text-red-600 font-bold">
-              ❌ Extraction failed. Please fill details manually.
+              {errorMessage || "Extraction failed. Please fill details manually."}
             </p>
           )}
           <InfoBadge>
-            <strong>Privacy &amp; Security:</strong> Your PAN card is processed securely in-memory and is <strong>not stored</strong> on our servers.
+            <strong>Privacy &amp; Security:</strong> Your passport image is sent securely to our server for extraction via AI Vision and is <strong>never stored</strong>. No image data is logged.
           </InfoBadge>
         </div>
 
@@ -96,34 +124,43 @@ export function StepApplicant({ data, onChange }: StepApplicantProps) {
             label="Salutation"
             required
             value={data.salutation}
-            onChange={(e) => onChange("salutation", e.target.value as SalutationType)}
+            onChange={(e) => updateField("salutation", e.target.value as SalutationType)}
             options={SALUTATIONS}
           />
           <Input
             label="Full Name"
             required
-            placeholder="Full legal name (as per PAN Card)"
+            placeholder="Full legal name (as per Passport)"
             value={data.fullName}
-            onChange={(e) => onChange("fullName", e.target.value)}
+            onChange={(e) => updateField("fullName", e.target.value)}
           />
         </div>
 
         <Input
-          label="PAN Number"
-          placeholder="ABCDE1234F"
-          value={data.pan}
-          onChange={(e) => onChange("pan", e.target.value.toUpperCase())}
-          maxLength={10}
-        />
-
-        <Input
-          label="UDIN"
-          hint="Can be added after CA signing"
-          placeholder="UDIN number"
-          value={data.udin}
-          onChange={(e) => onChange("udin", e.target.value)}
+          label="Passport Number"
+          placeholder="J1234567"
+          value={data.passportNumber}
+          onChange={(e) => updateField("passportNumber", e.target.value.toUpperCase())}
+          maxLength={8}
         />
       </div>
     </Section>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Failed to read file as base64"));
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }

@@ -5,6 +5,8 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
+import { requireAuth } from "@/lib/auth-guard";
+import { EXCHANGE_RATE_FALLBACK_USD_INR } from "@/constants";
 
 // Module-level cache — reused across requests within the same server process
 let cached: { rate: number; fetchedAt: number } | null = null;
@@ -12,8 +14,12 @@ const CACHE_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function GET(req: NextRequest) {
   try {
+    // 0. Authentication check
+    const authResult = await requireAuth();
+    if ("error" in authResult) return authResult.error;
+
     // Rate limiting
-    const identifier = getClientIdentifier(req);
+    const identifier = getClientIdentifier(req, authResult.userId);
     const rateResult = await exchangeRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -41,13 +47,12 @@ export async function GET(req: NextRequest) {
 
     cached = { rate, fetchedAt: Date.now() };
     return NextResponse.json({ rate, cached: false });
-  } catch (err) {
-    console.error("Exchange rate fetch error:", err);
+  } catch {
     // Fallback to cached stale value if available
     if (cached) {
       return NextResponse.json({ rate: cached.rate, cached: true, stale: true });
     }
     // Hard fallback: approximate rate
-    return NextResponse.json({ rate: 83.5, cached: false, fallback: true });
+    return NextResponse.json({ rate: EXCHANGE_RATE_FALLBACK_USD_INR, cached: false, fallback: true });
   }
 }

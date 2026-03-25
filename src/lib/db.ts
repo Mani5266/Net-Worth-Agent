@@ -1,20 +1,44 @@
 import { supabase } from "./supabase";
+import { FormDataSchema } from "./schemas";
 import type { FormData, CertificateRecord, DocumentRecord } from "@/types";
+
+/**
+ * Gets the authenticated user ID or throws an error.
+ */
+async function getRequiredUserId(): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error("Authentication required. Please sign in again.");
+  }
+  return user.id;
+}
+
+/**
+ * Safely parses form_data from DB JSON with Zod validation.
+ * Falls back to raw cast if validation fails (for backward compatibility with legacy data).
+ */
+function parseFormData(raw: unknown): FormData {
+  const result = FormDataSchema.safeParse(raw);
+  if (result.success) return result.data;
+  // Fallback: trust the data shape for legacy records but log the issue
+  return raw as FormData;
+}
 
 /**
  * Saves a new certificate draft.
  * Upserts the client first, then creates the certificate record.
  */
 export async function saveCertificateDraft(formData: FormData): Promise<string> {
-  // 1. Upsert Client
-  // 1. Upsert Client (based on PAN)
+  const userId = await getRequiredUserId();
+
+  // 1. Upsert Client (based on Passport Number, stored in pan_number column)
   const { data: client, error: clientError } = await supabase
     .from("clients")
     .upsert({
       full_name: formData.fullName,
       salutation: formData.salutation,
-      pan_number: formData.pan.toUpperCase(),
-      user_id: (await supabase.auth.getUser()).data.user?.id, // Get from session if not passed
+      pan_number: formData.passportNumber.toUpperCase(),
+      user_id: userId,
     }, { onConflict: 'pan_number' })
     .select()
     .single();
@@ -33,7 +57,7 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       udin: formData.udin,
       nickname: formData.nickname || formData.purpose,
       status: "draft",
-      form_data: formData as any,
+      form_data: formData as unknown as Record<string, unknown>,
     })
     .select()
     .single();
@@ -49,7 +73,7 @@ export async function updateCertificateDraft(id: string, formData: FormData): Pr
   const { error } = await supabase
     .from("certificates")
     .update({
-      form_data: formData as any,
+      form_data: formData as unknown as Record<string, unknown>,
       nickname: formData.nickname,
       updated_at: new Date().toISOString(),
     })
@@ -69,7 +93,7 @@ export async function getCertificate(id: string): Promise<FormData> {
     .single();
 
   if (error) throw error;
-  return data.form_data as unknown as FormData;
+  return parseFormData(data.form_data);
 }
 
 /**
@@ -93,14 +117,14 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
 
   if (error) throw error;
 
-  return data.map((item: any) => ({
-    id: item.id,
-    clientName: item.clients?.full_name || "Unknown",
-    nickname: item.nickname,
-    purpose: item.purpose,
-    certDate: item.cert_date,
-    status: item.status,
-    createdAt: item.created_at,
+  return data.map((item: Record<string, unknown>) => ({
+    id: item.id as string,
+    clientName: (item.clients as Record<string, unknown> | null)?.full_name as string || "Unknown",
+    nickname: item.nickname as string | undefined,
+    purpose: item.purpose as string,
+    certDate: item.cert_date as string,
+    status: item.status as "draft" | "completed",
+    createdAt: item.created_at as string,
   }));
 }
 
@@ -118,7 +142,7 @@ export async function renameCertificate(id: string, newName: string): Promise<vo
   if (fetchError) throw fetchError;
 
   const updatedFormData = {
-    ...(cert.form_data as any),
+    ...(cert.form_data as Record<string, unknown>),
     nickname: newName
   };
 
@@ -161,9 +185,10 @@ export async function uploadDocument(
   if (signedError) throw signedError;
 
   // 3. Save to DB
+  const userId = await getRequiredUserId();
   const { error: dbError } = await supabase.from("documents").insert({
     certificate_id: certificateId,
-    user_id: (await supabase.auth.getUser()).data.user?.id,
+    user_id: userId,
     annexure_type: annexureType,
     category: category,
     file_url: filePath,
@@ -221,15 +246,15 @@ export async function getDocuments(certificateId: string): Promise<DocumentRecor
     })
   );
 
-  return docsWithUrls.map((doc: any) => ({
-    id: doc.id,
-    certificateId: doc.certificate_id,
-    annexureType: doc.annexure_type,
-    category: doc.category,
-    fileUrl: doc.fileUrl,
-    fileName: doc.file_name,
-    fileType: doc.file_type,
-    uploadedAt: doc.uploaded_at,
+  return docsWithUrls.map((doc: Record<string, unknown>) => ({
+    id: doc.id as string,
+    certificateId: doc.certificate_id as string,
+    annexureType: doc.annexure_type as string,
+    category: doc.category as string,
+    fileUrl: doc.fileUrl as string,
+    fileName: doc.file_name as string,
+    fileType: doc.file_type as string,
+    uploadedAt: doc.uploaded_at as string,
   }));
 }
 /**
@@ -244,7 +269,11 @@ export async function deleteCertificate(id: string): Promise<void> {
     
   if (docs && docs.length > 0) {
     const paths = docs.map(d => d.file_url);
-    await supabase.storage.from("networth-documents").remove(paths);
+    const { error: storageErr } = await supabase.storage.from("networth-documents").remove(paths);
+    if (storageErr) {
+      // Log but don't throw - we still want to delete the DB record
+      console.error("Failed to delete storage files:", storageErr);
+    }
   }
 
   // 2. Delete from certificates (DB will handle cascading to documents table)
