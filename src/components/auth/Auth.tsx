@@ -215,6 +215,7 @@ export function Auth_UI() {
             <h1 className="text-3xl sm:text-4xl lg:text-[2.75rem] font-extrabold text-white leading-tight tracking-tight mb-5">
               Net Worth Agent
               <br />
+
             </h1>
             <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-md">
               Generate Net Worth certificate in minutes.
