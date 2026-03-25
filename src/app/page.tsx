@@ -299,7 +299,7 @@ function WizardShell({ session }: { session: Session }) {
         return (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-5 no-print">
-              <h2 className="text-lg font-bold text-emerald-800 m-0">
+              <h2 className="text-lg font-bold text-navy-950 m-0">
                 Net Worth Certificate
               </h2>
               <div className="flex gap-2 flex-wrap">
@@ -337,7 +337,7 @@ function WizardShell({ session }: { session: Session }) {
   // ── Layout ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen" style={{ backgroundColor: "#f5f7fb" }}>
       <div className="flex flex-col lg:flex-row min-h-screen">
         <Sidebar
           session={session}
@@ -365,7 +365,7 @@ function WizardShell({ session }: { session: Session }) {
             {/* Save Status Indicator */}
             <div className="h-6 flex justify-end no-print mb-2">
               {saving && (
-                <span className="text-[10px] font-bold text-emerald-600 animate-pulse">
+                <span className="text-[10px] font-bold text-navy-700 animate-pulse">
                   Saving draft...
                 </span>
               )}

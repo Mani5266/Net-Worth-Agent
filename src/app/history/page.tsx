@@ -97,7 +97,7 @@ export default function HistoryPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-black text-emerald-900 tracking-tight">
+            <h1 className="text-3xl font-black text-navy-950 tracking-tight">
               Certificate History
             </h1>
             <p className="text-slate-500 text-sm mt-1">
@@ -117,7 +117,7 @@ export default function HistoryPage() {
         <div className="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
           {authChecking || loading ? (
             <div className="p-12 text-center">
-              <div className="inline-block w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+              <div className="inline-block w-8 h-8 border-4 border-navy-700 border-t-transparent rounded-full animate-spin mb-4" />
               <p className="text-slate-500 animate-pulse">{authChecking ? "Checking authorization..." : "Loading certificates..."}</p>
             </div>
           ) : !session ? (
@@ -134,13 +134,13 @@ export default function HistoryPage() {
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-emerald-50/50 border-b border-slate-200">
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest">Client Name</th>
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest">Purpose</th>
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest">Date</th>
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest">Status</th>
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest">Created At</th>
-                      <th className="px-6 py-4 text-xs font-bold text-emerald-800 uppercase tracking-widest text-right">Actions</th>
+                    <tr className="bg-navy-50/50 border-b border-slate-200">
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest">Client Name</th>
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest">Purpose</th>
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest">Date</th>
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest">Created At</th>
+                      <th className="px-6 py-4 text-xs font-bold text-navy-800 uppercase tracking-widest text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-sm">

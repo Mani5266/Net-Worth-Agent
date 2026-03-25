@@ -76,35 +76,36 @@ export function Sidebar({
     <>
       {/* Logo */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-emerald-800 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-emerald-800/20">
-          N
+        <div className="w-10 h-10 bg-navy-950 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg shadow-navy-950/20">
+          O
         </div>
-        <h1 className="text-xl font-black text-emerald-900 tracking-tight leading-tight">
-          Net Worth<br />Agent
+        <h1 className="text-xl font-extrabold text-navy-950 tracking-tight leading-tight">
+          OnEasy
         </h1>
       </div>
 
       {/* New Certificate */}
-      <Button
-        variant="primary"
-        className="w-full justify-center gap-2 mb-8 py-3 rounded-xl shadow-md shadow-emerald-800/10"
+      <button
         onClick={() => {
           onNewCertificate();
           setMobileOpen(false);
         }}
+        className="w-full flex items-center justify-center gap-2 mb-8 py-3 px-4 rounded-xl font-semibold text-sm
+          text-white bg-navy-950 hover:bg-navy-900 shadow-md shadow-navy-950/10
+          transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-navy-900/30 focus:ring-offset-2"
       >
         <Plus className="w-4 h-4" /> New Certificate
-      </Button>
+      </button>
 
       {/* Certificate List */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex items-center justify-between mb-4 px-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+          <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
             Recent Certificates
           </h2>
           <Link
             href="/history"
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 transition-colors"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-navy-700 hover:text-navy-900 transition-colors"
             onClick={() => setMobileOpen(false)}
           >
             <History className="w-3 h-3" />
@@ -123,7 +124,7 @@ export function Sidebar({
                 key={cert.id}
                 className={`relative group w-full rounded-xl transition-all border ${
                   certificateId === cert.id
-                    ? "bg-emerald-50 border-emerald-200 ring-1 ring-emerald-100"
+                    ? "bg-navy-50 border-navy-200 ring-1 ring-navy-100"
                     : "bg-white border-transparent hover:border-slate-200 hover:bg-slate-50/50"
                 }`}
               >
@@ -131,8 +132,8 @@ export function Sidebar({
                   <div className="p-3">
                     <input
                       autoFocus
-                      className="w-full text-[13px] font-bold bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5
-                        focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      className="w-full text-[13px] font-bold bg-white border border-navy-300 rounded-lg px-2.5 py-1.5
+                        focus:outline-none focus:ring-2 focus:ring-navy-500/20 focus:border-navy-500"
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onBlur={() => handleRename(cert.id)}
@@ -156,8 +157,8 @@ export function Sidebar({
                         cert.status === "completed"
                           ? "bg-emerald-100 text-emerald-600"
                           : certificateId === cert.id
-                            ? "bg-emerald-100 text-emerald-600"
-                            : "bg-slate-100 text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-500"
+                            ? "bg-navy-100 text-navy-600"
+                            : "bg-slate-100 text-slate-400 group-hover:bg-navy-50 group-hover:text-navy-500"
                       } transition-colors`}
                     >
                       {cert.status === "completed" ? (
@@ -167,7 +168,7 @@ export function Sidebar({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-bold text-slate-800 line-clamp-1 group-hover:text-emerald-800 transition-colors">
+                      <p className="text-[13px] font-bold text-slate-800 line-clamp-1 group-hover:text-navy-800 transition-colors">
                         {cert.nickname || cert.clientName || "Unnamed Client"}
                       </p>
                       <div className="flex items-center justify-between mt-1">
@@ -196,7 +197,7 @@ export function Sidebar({
                         setEditingId(cert.id);
                         setEditValue(cert.nickname || cert.clientName || "");
                       }}
-                      className="p-1.5 text-slate-400 hover:text-emerald-600 transition-colors rounded-md hover:bg-emerald-50"
+                      className="p-1.5 text-slate-400 hover:text-navy-600 transition-colors rounded-md hover:bg-navy-50"
                       aria-label="Rename certificate"
                       title="Rename"
                     >
@@ -225,7 +226,7 @@ export function Sidebar({
       <div className="mt-8 pt-6 border-t border-slate-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs shrink-0">
+            <div className="w-8 h-8 rounded-full bg-navy-100 flex items-center justify-center text-navy-700 font-bold text-xs shrink-0">
               {(session.user?.email?.[0] ?? "?").toUpperCase()}
             </div>
             <p className="text-[11px] font-semibold text-slate-600 truncate">
@@ -283,7 +284,7 @@ export function Sidebar({
       {/* Mobile drawer overlay */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
+          className="lg:hidden fixed inset-0 z-40 bg-navy-950/40 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />

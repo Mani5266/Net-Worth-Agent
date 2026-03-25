@@ -257,10 +257,10 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
           return (
             <div key={person} className="border border-slate-200 rounded-xl overflow-hidden">
               {/* Person header */}
-              <div className="bg-emerald-50 border-b border-emerald-100 px-4 py-3 flex items-center justify-between">
+              <div className="bg-navy-50 border-b border-navy-100 px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-emerald-700" />
-                  <span className="font-bold text-sm text-emerald-800">
+                  <Building2 className="w-4 h-4 text-navy-700" />
+                  <span className="font-bold text-sm text-navy-800">
                     {person === "Self" ? "Self\u2019s" : `${person}\u2019s`} Properties
                   </span>
                 </div>
@@ -268,9 +268,9 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                   type="button"
                   onClick={() => addProperty(person)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold
-                    text-emerald-700 bg-white border border-emerald-300 rounded-lg
-                    hover:bg-emerald-50 transition-colors
-                    focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
+                    text-navy-700 bg-white border border-navy-300 rounded-lg
+                    hover:bg-navy-50 transition-colors
+                    focus:outline-none focus:ring-2 focus:ring-navy-900/10"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add Property
@@ -293,7 +293,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                       : `Enter ${person.toLowerCase()}\u2019s full name`
                   }
                   className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full max-w-md
-                    focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600
+                    focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                     transition-colors bg-white placeholder:text-slate-400"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
@@ -394,7 +394,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               {/* Table header */}
               <div
-                className="grid bg-emerald-800 px-4 py-2.5"
+                className="grid bg-navy-950 px-4 py-2.5"
                 style={{
                   gridTemplateColumns: isForeign
                     ? "2.5fr 1.5fr 1.5fr"
@@ -450,11 +450,11 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                         placeholder="Enter amount"
                         aria-label={`INR amount for property ${flatIdx + 1}`}
                         className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
-                          focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600
+                          focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                           transition-colors"
                       />
                       {showUSD && usdLabel && (
-                        <span className="text-[10px] text-emerald-700 font-medium pl-1">
+                        <span className="text-[10px] text-navy-700 font-medium pl-1">
                           {usdLabel}
                         </span>
                       )}
@@ -465,8 +465,8 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                       <div className="flex flex-col gap-0.5 self-center">
                         {showUSD ? (
                           <div
-                            className="px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50
-                              text-xs w-full text-emerald-800 font-semibold"
+                            className="px-2.5 py-1.5 rounded-lg border border-navy-200 bg-navy-50
+                              text-xs w-full text-navy-800 font-semibold"
                           >
                             {usdLabel || <span className="text-slate-400">Auto</span>}
                           </div>
@@ -478,7 +478,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                             placeholder="Amount"
                             aria-label={`USD amount for property ${flatIdx + 1}`}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
-                              focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600
+                              focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                               transition-colors"
                           />
                         )}
@@ -490,9 +490,9 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
 
               {/* Rate badge */}
               {showUSD && (
-                <div className="px-4 py-2 bg-emerald-50 border-t border-emerald-100 flex items-center gap-1.5">
-                  <Pin className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span className="text-[10px] text-emerald-700">
+                <div className="px-4 py-2 bg-navy-50 border-t border-navy-100 flex items-center gap-1.5">
+                  <Pin className="w-3 h-3 text-navy-600 shrink-0" />
+                  <span className="text-[10px] text-navy-700">
                     Rate used: <strong>1 USD = Rs.{usdRate?.toFixed(2)}</strong>
                   </span>
                 </div>

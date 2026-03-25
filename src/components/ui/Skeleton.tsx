@@ -28,7 +28,7 @@ export function StepSkeleton() {
       <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
         {/* Title */}
         <Skeleton className="h-5 w-48 mb-5" />
-        <div className="h-px bg-emerald-100 mb-5" />
+        <div className="h-px bg-navy-100 mb-5" />
 
         {/* Form rows */}
         <div className="space-y-5">

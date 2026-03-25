@@ -48,9 +48,9 @@ export function ProgressBar({ steps, currentStep, onClickStep }: ProgressBarProp
                   transition-all duration-200 border-2 flex-shrink-0
                   ${
                     done
-                      ? "bg-emerald-800 text-white border-emerald-800 cursor-pointer hover:bg-emerald-700"
+                      ? "bg-navy-950 text-white border-navy-950 cursor-pointer hover:bg-navy-900"
                       : active
-                      ? "bg-emerald-600 text-white border-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]"
+                      ? "bg-navy-700 text-white border-navy-600 shadow-[0_0_0_4px_rgba(15,26,46,0.12)]"
                       : "bg-slate-100 text-slate-400 border-slate-200 cursor-default"
                   }`}
               >
@@ -64,7 +64,7 @@ export function ProgressBar({ steps, currentStep, onClickStep }: ProgressBarProp
               </button>
               <span
                 className={`text-[10px] whitespace-nowrap font-medium
-                  ${active ? "text-emerald-800 font-bold" : done ? "text-emerald-700" : "text-slate-400"}`}
+                  ${active ? "text-navy-950 font-bold" : done ? "text-navy-700" : "text-slate-400"}`}
               >
                 {step.label}
               </span>
@@ -73,7 +73,7 @@ export function ProgressBar({ steps, currentStep, onClickStep }: ProgressBarProp
             {i < steps.length - 1 && (
               <div
                 className={`flex-1 h-0.5 mx-1 mb-4 transition-colors duration-200
-                  ${done ? "bg-emerald-800" : "bg-slate-200"}`}
+                  ${done ? "bg-navy-950" : "bg-slate-200"}`}
               />
             )}
           </div>

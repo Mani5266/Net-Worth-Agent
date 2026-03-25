@@ -52,7 +52,7 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
 
   return (
     <div className="mt-2 mb-3">
-      <p className="text-xs font-semibold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+      <p className="text-xs font-semibold text-navy-800 mb-1.5 flex items-center gap-1.5">
         <Paperclip className="w-3.5 h-3.5" />
         Documents for <span className="italic">{label}</span>
       </p>
@@ -69,15 +69,15 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
         className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed
           rounded-xl px-4 py-4 cursor-pointer transition-all text-center
-          focus:outline-none focus:ring-2 focus:ring-emerald-600/20
+          focus:outline-none focus:ring-2 focus:ring-navy-900/10
           ${dragging
-            ? "border-emerald-500 bg-emerald-50"
-            : "border-slate-200 hover:border-emerald-400 bg-slate-50 hover:bg-emerald-50"
+            ? "border-navy-500 bg-navy-50"
+            : "border-slate-200 hover:border-navy-400 bg-slate-50 hover:bg-navy-50"
           }`}
       >
         <FolderUp className="w-5 h-5 text-slate-400" />
         <p className="text-xs text-slate-500">
-          Drag &amp; drop or <span className="text-emerald-700 font-semibold">click to upload</span>
+          Drag &amp; drop or <span className="text-navy-700 font-semibold">click to upload</span>
         </p>
         <p className="text-[10px] text-slate-400">{hint || "PDF or JPG accepted"}</p>
         <input

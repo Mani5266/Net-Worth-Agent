@@ -82,8 +82,8 @@ export function StepApplicant() {
       <div className="flex flex-col gap-5">
 
         {/* Secure Passport Extraction */}
-        <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-4">
-          <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+        <div className="bg-navy-50/50 border border-navy-100 rounded-xl p-4">
+          <p className="text-xs font-bold text-navy-800 uppercase tracking-widest mb-3 flex items-center gap-2">
             Secure Passport Auto-Fill
           </p>
           <div className="flex items-center gap-4">
@@ -101,11 +101,11 @@ export function StepApplicant() {
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">
               Extract name &amp; passport number automatically.<br/>
-              <span className="text-emerald-700 font-medium">Processed securely on our server</span>
+              <span className="text-navy-700 font-medium">Processed securely on our server</span>
             </p>
           </div>
           {status === "success" && (
-            <p className="mt-2 text-[11px] text-emerald-700 font-bold animate-pulse">
+            <p className="mt-2 text-[11px] text-navy-700 font-bold animate-pulse">
               Details extracted and auto-filled!
             </p>
           )}

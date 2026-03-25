@@ -81,7 +81,7 @@ export function AuditLog({ entries }: AuditLogProps) {
                   <td className="px-3 py-1.5 text-red-600">
                     {truncate(entry.oldValue, 30) || "-"}
                   </td>
-                  <td className="px-3 py-1.5 text-emerald-700">
+                  <td className="px-3 py-1.5 text-navy-700">
                     {truncate(entry.newValue, 30) || "-"}
                   </td>
                 </tr>
