@@ -137,7 +137,7 @@ export default function HistoryPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-400">
-                        {new Date(cert.createdAt).toLocaleDateString()}
+                        <ClientDate date={cert.createdAt} />
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
                         <Button 
@@ -186,4 +186,11 @@ export default function HistoryPage() {
       </div>
     </div>
   );
+}
+
+function ClientDate({ date }: { date: string }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+  return <>{new Date(date).toLocaleDateString()}</>;
 }

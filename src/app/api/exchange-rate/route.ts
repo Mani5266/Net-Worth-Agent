@@ -1,11 +1,24 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+import {
+  exchangeRateLimit,
+  getClientIdentifier,
+  rateLimitResponse,
+} from "@/lib/ratelimit";
 
 // Module-level cache — reused across requests within the same server process
 let cached: { rate: number; fetchedAt: number } | null = null;
 const CACHE_MS = 10 * 60 * 1000; // 10 minutes
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    // Rate limiting
+    const identifier = getClientIdentifier(req);
+    const rateResult = await exchangeRateLimit.check(identifier);
+    if (!rateResult.success) {
+      return rateLimitResponse(rateResult.reset);
+    }
+
     // Return cached value if still fresh
     if (cached && Date.now() - cached.fetchedAt < CACHE_MS) {
       return NextResponse.json({ rate: cached.rate, cached: true });
