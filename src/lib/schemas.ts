@@ -165,6 +165,7 @@ export const FormDataSchema = z.object({
   udin: z.string(),
 
   // Step 3 – Annexure I: Current Income
+  assessmentYear: z.string(),
   incomeTypes: z.array(z.string()),
   incomeLabels: z.record(z.string(), z.string()),
   incomeRows: z.array(AnnexureRowSchema),
@@ -199,6 +200,15 @@ export const FormDataSchema = z.object({
   bankDetails: z.string(),
   policies: z.array(z.string()),
   supportingDocs: z.array(z.string()),
+
+  // Step 7 – Signatory Details (CA Firm / Partner)
+  firmName: z.string(),
+  firmType: z.string(),
+  firmFRN: z.string(),
+  signatoryName: z.string(),
+  signatoryTitle: z.string(),
+  membershipNo: z.string(),
+  signPlace: z.string(),
 });
 
 // ─── Per-Step Validation Schemas (strict, for step-level gating) ─────────────
@@ -225,48 +235,24 @@ export const StepApplicantSchema = z.object({
   passportNumber: PassportSchema,
 });
 
-/** At least one income row with a non-empty INR amount */
+/** Income step — optional, no minimum rows required */
 export const StepIncomeSchema = z.object({
-  incomeRows: z
-    .array(AnnexureRowSchema)
-    .min(1, "At least one income row is required")
-    .refine(
-      (rows) => rows.some((r) => r.inr.trim().length > 0),
-      "At least one income row must have an amount"
-    ),
+  incomeRows: z.array(AnnexureRowSchema),
 });
 
-/** At least one immovable asset row with a non-empty INR amount */
+/** Immovable assets step — optional, no minimum rows required */
 export const StepImmovableSchema = z.object({
-  immovableRows: z
-    .array(AnnexureRowSchema)
-    .min(1, "At least one immovable asset row is required")
-    .refine(
-      (rows) => rows.some((r) => r.inr.trim().length > 0),
-      "At least one immovable asset row must have an amount"
-    ),
+  immovableRows: z.array(AnnexureRowSchema),
 });
 
-/** At least one movable property row with a non-empty INR amount */
+/** Movable properties step — optional, no minimum rows required */
 export const StepMovableSchema = z.object({
-  movableRows: z
-    .array(AnnexureRowSchema)
-    .min(1, "At least one movable property row is required")
-    .refine(
-      (rows) => rows.some((r) => r.inr.trim().length > 0),
-      "At least one movable property row must have an amount"
-    ),
+  movableRows: z.array(AnnexureRowSchema),
 });
 
-/** Savings step — at least one savings row with a non-empty INR amount */
+/** Savings step — optional, no minimum rows required */
 export const StepSavingsSchema = z.object({
-  savingsRows: z
-    .array(AnnexureRowSchema)
-    .min(1, "At least one savings entry is required")
-    .refine(
-      (rows) => rows.some((r) => r.inr.trim().length > 0),
-      "At least one savings entry must have an amount"
-    ),
+  savingsRows: z.array(AnnexureRowSchema),
 });
 
 // ─── Certificate Summary ─────────────────────────────────────────────────────
@@ -364,8 +350,8 @@ export const AuditEntrySchema = z.object({
   oldValue: z.string(),
   /** New value (serialized as string for display) */
   newValue: z.string(),
-  /** Which wizard step this change was made on (0-6) */
-  step: z.number().int().min(0).max(6),
+  /** Which wizard step this change was made on (0-7) */
+  step: z.number().int().min(0).max(7),
 });
 
 // ─── Inferred Types ──────────────────────────────────────────────────────────
@@ -385,18 +371,3 @@ export type CertificateRecord = z.infer<typeof CertificateRecordSchema>;
 export type DocumentRecord = z.infer<typeof DocumentRecordSchema>;
 export type FormStatus = z.infer<typeof FormStatusSchema>;
 export type AuditEntry = z.infer<typeof AuditEntrySchema>;
-
-// Step validation types
-export type StepPurpose = z.infer<typeof StepPurposeSchema>;
-export type StepApplicant = z.infer<typeof StepApplicantSchema>;
-export type StepIncome = z.infer<typeof StepIncomeSchema>;
-export type StepImmovable = z.infer<typeof StepImmovableSchema>;
-export type StepMovable = z.infer<typeof StepMovableSchema>;
-export type StepSavings = z.infer<typeof StepSavingsSchema>;
-
-// API types
-export type OCRRequest = z.infer<typeof OCRRequestSchema>;
-export type OCRPassportResponse = z.infer<typeof OCRPassportResponseSchema>;
-export type OCRAadhaarResponse = z.infer<typeof OCRAadhaarResponseSchema>;
-export type ExchangeRateResponse = z.infer<typeof ExchangeRateResponseSchema>;
-export type APIErrorResponse = z.infer<typeof APIErrorResponseSchema>;

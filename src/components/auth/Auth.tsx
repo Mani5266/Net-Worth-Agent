@@ -213,12 +213,12 @@ export function Auth_UI() {
           {/* Hero copy */}
           <div className="flex-1 flex flex-col justify-center max-w-lg">
             <h1 className="text-3xl sm:text-4xl lg:text-[2.75rem] font-extrabold text-white leading-tight tracking-tight mb-5">
-              Net Worth Agent
+              Offer Letter
               <br />
-
+              Generator
             </h1>
             <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-10 max-w-md">
-              Generate Net Worth certificate in minutes.
+              Generate legally compliant offer and appointment letters in minutes.
               Professional, accurate, and ready to sign.
             </p>
 
@@ -269,20 +269,22 @@ export function Auth_UI() {
               <button
                 type="button"
                 onClick={() => switchMode("login")}
-                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-semibold transition-all duration-200 ${mode === "login"
+                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-semibold transition-all duration-200 ${
+                  mode === "login"
                     ? "bg-navy-950 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                  }`}
+                }`}
               >
                 Login
               </button>
               <button
                 type="button"
                 onClick={() => switchMode("signup")}
-                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-semibold transition-all duration-200 ${mode === "signup"
+                className={`flex-1 py-2.5 px-4 rounded-md text-sm font-semibold transition-all duration-200 ${
+                  mode === "signup"
                     ? "bg-navy-950 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                  }`}
+                }`}
               >
                 Sign Up
               </button>
@@ -398,8 +400,9 @@ export function Auth_UI() {
                       {passwordStrength.checks.map((check) => (
                         <p
                           key={check.label}
-                          className={`text-[10px] flex items-center gap-1 ${check.passed ? "text-emerald-600" : "text-slate-400"
-                            }`}
+                          className={`text-[10px] flex items-center gap-1 ${
+                            check.passed ? "text-emerald-600" : "text-slate-400"
+                          }`}
                         >
                           <span>{check.passed ? "+" : "-"}</span>
                           {check.label}
@@ -436,9 +439,10 @@ export function Auth_UI() {
                       placeholder:text-slate-400 bg-white
                       focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                       hover:border-slate-300
-                      transition-all duration-200 shadow-sm ${confirmPassword && confirmPassword !== password
-                        ? "border-red-400 focus:ring-red-200/50 focus:border-red-400"
-                        : "border-slate-200"
+                      transition-all duration-200 shadow-sm ${
+                        confirmPassword && confirmPassword !== password
+                          ? "border-red-400 focus:ring-red-200/50 focus:border-red-400"
+                          : "border-slate-200"
                       }`}
                   />
                 </div>
@@ -453,12 +457,13 @@ export function Auth_UI() {
             {/* Message */}
             {message && (
               <div
-                className={`p-3.5 rounded-xl text-sm font-medium border ${message.type === "error"
+                className={`p-3.5 rounded-xl text-sm font-medium border ${
+                  message.type === "error"
                     ? "bg-red-50 text-red-800 border-red-200"
                     : message.type === "success"
-                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                      : "bg-blue-50 text-blue-800 border-blue-200"
-                  }`}
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-blue-50 text-blue-800 border-blue-200"
+                }`}
               >
                 {message.text}
               </div>
@@ -486,8 +491,8 @@ export function Auth_UI() {
                     {mode === "login"
                       ? "Sign In"
                       : mode === "signup"
-                        ? "Create Account"
-                        : "Send Reset Link"}
+                      ? "Create Account"
+                      : "Send Reset Link"}
                   </span>
                   <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
                 </>

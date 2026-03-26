@@ -20,6 +20,7 @@ export const INITIAL_STATE: FormData = {
   passportNumber: "",
   udin: "",
   // Step 3
+  assessmentYear: "",
   incomeTypes: [],
   incomeLabels: {},
   incomeRows: INITIAL_INCOME_ROWS,
@@ -51,6 +52,14 @@ export const INITIAL_STATE: FormData = {
   bankDetails: "",
   policies: [""],
   supportingDocs: [],
+  // Step 7 — Signatory Details
+  firmName: "B A S T & ASSOCIATES",
+  firmType: "Chartered Accountants",
+  firmFRN: "021029S",
+  signatoryName: "CA Abhishek Boddu",
+  signatoryTitle: "Partner",
+  membershipNo: "242868",
+  signPlace: "Hyderabad",
 };
 
 export function useFormData() {

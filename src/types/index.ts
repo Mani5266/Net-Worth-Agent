@@ -25,15 +25,3 @@ export interface StepDefinition {
   icon: string;
   label: string;
 }
-
-// ─── API Types (kept for backward compatibility) ─────────────────────────────
-
-export interface GenerateCertificateRequest {
-  formData: import("@/lib/schemas").FormData;
-}
-
-export interface GenerateCertificateResponse {
-  success: boolean;
-  text?: string;
-  error?: string;
-}
