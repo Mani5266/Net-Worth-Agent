@@ -166,6 +166,7 @@ export const STEPS: StepDefinition[] = [
   { id: "immovable", icon: "building",      label: "Annexure II"  },
   { id: "movable",   icon: "car",           label: "Annexure III" },
   { id: "savings",   icon: "landmark",      label: "Annexure IV"  },
+  { id: "signatory", icon: "pen-tool",      label: "Signatory"    },
   { id: "preview",   icon: "file-text",     label: "Certificate"  },
 ];
 

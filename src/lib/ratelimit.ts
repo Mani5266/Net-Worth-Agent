@@ -50,6 +50,15 @@ export const exchangeRateLimit = createLimiter("exchange-rate", {
   window: "1 h",
 });
 
+/**
+ * /api/gold-price — 30 requests per hour per identifier.
+ * Lightweight reference data endpoint.
+ */
+export const goldPriceRateLimit = createLimiter("gold-price", {
+  requests: 30,
+  window: "1 h",
+});
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 interface LimiterConfig {

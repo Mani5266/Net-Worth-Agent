@@ -11,6 +11,7 @@ import { StepIncome } from "@/components/steps/StepIncome";
 import { StepImmovable } from "@/components/steps/StepImmovable";
 import { StepMovable } from "@/components/steps/StepMovable";
 import { StepSavings } from "@/components/steps/StepSavings";
+import { StepSignatory } from "@/components/steps/StepSignatory";
 import { CertificatePreview } from "@/components/certificate/CertificatePreview";
 import { AuditLog } from "@/components/AuditLog";
 import { FormDataProvider, useFormContext } from "@/hooks/useFormContext";
@@ -296,6 +297,8 @@ function WizardShell({ session }: { session: Session }) {
       case 5:
         return <StepSavings certificateId={certificateId} />;
       case 6:
+        return <StepSignatory />;
+      case 7:
         return (
           <div>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-5 no-print">

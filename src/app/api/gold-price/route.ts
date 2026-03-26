@@ -1,5 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
+import {
+  goldPriceRateLimit,
+  getClientIdentifier,
+  rateLimitResponse,
+} from "@/lib/ratelimit";
+import { GoldValuationRequestSchema } from "@/lib/schemas";
 import { GOLD_REFERENCE_PRICES } from "@/constants";
 
 /**
@@ -34,9 +40,16 @@ interface GoldValuation {
 
 // ─── GET /api/gold-price ──────────────────────────────────────────────────────
 
-export async function GET(): Promise<NextResponse<GoldPriceResponse | { success: false; error: string }>> {
-  const authResult = await requireAuth();
+export async function GET(request: NextRequest): Promise<NextResponse<GoldPriceResponse | { success: false; error: string }>> {
+  const authResult = await requireAuth(request);
   if ("error" in authResult) return authResult.error as NextResponse<{ success: false; error: string }>;
+
+  // Rate limiting
+  const identifier = getClientIdentifier(request, authResult.userId);
+  const rateResult = await goldPriceRateLimit.check(identifier);
+  if (!rateResult.success) {
+    return rateLimitResponse(rateResult.reset) as NextResponse<{ success: false; error: string }>;
+  }
 
   return NextResponse.json({
     price24kPerGram: GOLD_REFERENCE_PRICES.price24kPerGram,
@@ -49,37 +62,45 @@ export async function GET(): Promise<NextResponse<GoldPriceResponse | { success:
 
 // ─── POST /api/gold-price (validate a gold valuation) ─────────────────────────
 
-export async function POST(request: Request): Promise<NextResponse<GoldValuation | { error: string }>> {
-  const authResult = await requireAuth();
+export async function POST(request: NextRequest): Promise<NextResponse<GoldValuation | { error: string }>> {
+  const authResult = await requireAuth(request);
   if ("error" in authResult) return authResult.error as NextResponse<{ error: string }>;
 
-  try {
-    const body = await request.json() as Record<string, unknown>;
-    const grams = Number(body.grams);
-    const declaredValue = body.declaredValue !== undefined && body.declaredValue !== null
-      ? Number(body.declaredValue)
-      : null;
+  // Rate limiting
+  const identifier = getClientIdentifier(request, authResult.userId);
+  const rateResult = await goldPriceRateLimit.check(identifier);
+  if (!rateResult.success) {
+    return rateLimitResponse(rateResult.reset) as NextResponse<{ error: string }>;
+  }
 
-    if (!grams || grams <= 0) {
+  try {
+    const body = await request.json();
+
+    // Zod validation
+    const parsed = GoldValuationRequestSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "grams must be a positive number" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
       );
     }
+
+    const { grams, declaredValue } = parsed.data;
+    const resolvedDeclaredValue = declaredValue ?? null;
 
     const estimatedValue22k = Math.round(grams * GOLD_REFERENCE_PRICES.price22kPerGram);
     const estimatedValue24k = Math.round(grams * GOLD_REFERENCE_PRICES.price24kPerGram);
 
     let variance22kPercent: number | null = null;
-    if (declaredValue !== null && estimatedValue22k > 0) {
-      variance22kPercent = Math.round(((declaredValue - estimatedValue22k) / estimatedValue22k) * 100);
+    if (resolvedDeclaredValue !== null && estimatedValue22k > 0) {
+      variance22kPercent = Math.round(((resolvedDeclaredValue - estimatedValue22k) / estimatedValue22k) * 100);
     }
 
     return NextResponse.json({
       grams,
       estimatedValue22k,
       estimatedValue24k,
-      declaredValue,
+      declaredValue: resolvedDeclaredValue,
       variance22kPercent,
     });
   } catch {

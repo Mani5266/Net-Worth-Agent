@@ -15,7 +15,7 @@ const CACHE_MS = 10 * 60 * 1000; // 10 minutes
 export async function GET(req: NextRequest) {
   try {
     // 0. Authentication check
-    const authResult = await requireAuth();
+    const authResult = await requireAuth(req);
     if ("error" in authResult) return authResult.error;
 
     // Rate limiting

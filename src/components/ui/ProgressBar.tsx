@@ -8,6 +8,7 @@ import {
   Building,
   Car,
   Landmark,
+  PenTool,
   FileText,
   Check,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const STEP_ICON_MAP: Record<string, LucideIcon> = {
   building: Building,
   car: Car,
   landmark: Landmark,
+  "pen-tool": PenTool,
   "file-text": FileText,
 };
 

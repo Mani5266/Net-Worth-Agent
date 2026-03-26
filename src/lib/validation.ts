@@ -54,7 +54,8 @@ function runSchema<T>(schema: z.ZodType<T>, data: unknown): ValidationResult {
  *  3 = Annexure II (Immovable)
  *  4 = Annexure III (Movable)
  *  5 = Annexure IV (Savings)
- *  6 = Preview (no validation — always passes)
+ *  6 = Signatory Details (optional — passes if empty)
+ *  7 = Preview (no validation — always passes)
  */
 export function validateFormStep(step: number, data: FormData): ValidationResult {
   switch (step) {
@@ -94,6 +95,11 @@ export function validateFormStep(step: number, data: FormData): ValidationResult
       });
 
     case 6:
+      // Signatory step — optional fields, always passes
+      // (CA firm details have defaults from constants)
+      return { success: true, errors: {} };
+
+    case 7:
       // Preview step — no validation
       return { success: true, errors: {} };
 

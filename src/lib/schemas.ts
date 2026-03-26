@@ -328,6 +328,11 @@ export const APIErrorResponseSchema = z.object({
   error: z.string(),
 });
 
+export const GoldValuationRequestSchema = z.object({
+  grams: z.number().positive("grams must be a positive number").max(100000, "grams exceeds maximum allowed"),
+  declaredValue: z.number().positive().nullable().optional(),
+});
+
 // ─── Discriminated Union: FormStatus ─────────────────────────────────────────
 
 export const FormStatusSchema = z.discriminatedUnion("status", [

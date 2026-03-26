@@ -11,7 +11,7 @@ const nextConfig = {
         headers: [
           {
             key: "X-Frame-Options",
-            value: "SAMEORIGIN",
+            value: "DENY",
           },
           {
             key: "X-Content-Type-Options",
@@ -31,7 +31,7 @@ const nextConfig = {
           },
           {
             key: "Strict-Transport-Security",
-            value: "max-age=31536000; includeSubDomains",
+            value: "max-age=63072000; includeSubDomains; preload",
           },
           {
             key: "Content-Security-Policy",
@@ -42,7 +42,7 @@ const nextConfig = {
               "img-src 'self' data: blob: https://*.supabase.co",
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.exchangerate-api.com https://generativelanguage.googleapis.com",
-              "frame-ancestors 'self'",
+              "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
             ].join("; "),

@@ -6,6 +6,8 @@ import {
   rateLimitResponse,
 } from "@/lib/ratelimit";
 import { requireAuth } from "@/lib/auth-guard";
+import { logAction } from "@/lib/audit";
+import { OCRRequestSchema } from "@/lib/schemas";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -76,7 +78,7 @@ function validatePassport(passportNumber: string): boolean {
 export async function POST(req: NextRequest) {
   try {
     // 0. Authentication check
-    const authResult = await requireAuth();
+    const authResult = await requireAuth(req);
     if ("error" in authResult) return authResult.error;
 
     // 1. Rate limiting
@@ -95,29 +97,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Parse body
+    // 3. Parse and validate body with Zod
     const body = await req.json();
-    const { image, documentType } = body as {
-      image?: unknown;
-      documentType?: unknown;
-    };
+    const parsed = OCRRequestSchema.safeParse(body);
 
-    // 4. Validate inputs
-    if (!image || typeof image !== "string") {
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Missing or invalid 'image' field. Expected base64 string." },
+        { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
       );
     }
 
-    if (!isValidDocumentType(documentType)) {
-      return NextResponse.json(
-        { success: false, error: "Invalid 'documentType'. Must be 'passport' or 'aadhaar'." },
-        { status: 400 }
-      );
-    }
+    const { image, documentType } = parsed.data;
 
-    // 5. Check image size (base64 is ~33% larger than binary)
+    // 4. Check image size (base64 is ~33% larger than binary)
     const { mimeType, data: base64Data } = extractMimeType(image);
     const estimatedBytes = (base64Data.length * 3) / 4;
     if (estimatedBytes > MAX_IMAGE_BYTES) {
@@ -214,6 +207,16 @@ export async function POST(req: NextRequest) {
         // 8. Post-process and return based on document type
         if (documentType === "passport") {
           const passportNumber = typeof extracted.passportNumber === "string" ? extracted.passportNumber.toUpperCase().trim() : "";
+
+          // Audit: OCR processed (no PII in metadata — only doc type + model)
+          logAction({
+            userId: authResult.userId,
+            action: "ocr_processed",
+            documentType: "passport",
+            request: req,
+            metadata: { modelUsed: model, mimeType },
+          });
+
           return NextResponse.json({
             success: true,
             fullName: typeof extracted.fullName === "string" ? extracted.fullName.trim() : "",
@@ -223,6 +226,15 @@ export async function POST(req: NextRequest) {
         }
 
         if (documentType === "aadhaar") {
+          // Audit: OCR processed (no PII in metadata — only doc type + model)
+          logAction({
+            userId: authResult.userId,
+            action: "ocr_processed",
+            documentType: "aadhaar",
+            request: req,
+            metadata: { modelUsed: model, mimeType },
+          });
+
           return NextResponse.json({
             success: true,
             name: typeof extracted.name === "string" ? extracted.name.trim() : "",

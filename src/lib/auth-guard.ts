@@ -1,12 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { logAction } from "./audit";
 
 /**
  * Verifies that the request comes from an authenticated user.
  * Returns the user ID if authenticated, or a 401 NextResponse if not.
+ *
+ * @param request - Optional Request object. When provided, failed auth
+ *                  attempts are logged with IP/user-agent for security monitoring.
  */
-export async function requireAuth(): Promise<
+export async function requireAuth(request?: Request): Promise<
   { userId: string } | { error: NextResponse }
 > {
   const cookieStore = cookies();
@@ -36,6 +40,16 @@ export async function requireAuth(): Promise<
   } = await supabase.auth.getUser();
 
   if (!user) {
+    // Audit: log failed authentication attempt with IP/user-agent
+    logAction({
+      userId: "anonymous",
+      action: "failed_auth",
+      request,
+      metadata: {
+        path: request?.url ? new URL(request.url).pathname : "unknown",
+      },
+    });
+
     return {
       error: NextResponse.json(
         { success: false, error: "Authentication required." },
