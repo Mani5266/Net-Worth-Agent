@@ -1,5 +1,5 @@
 import type { AnnexureRow, FormData, CertificateTotals, PurposeValue } from "@/types";
-import { FOREIGN_PURPOSES, CA_FIRM, GOLD_REFERENCE_PRICES } from "@/constants";
+import { FOREIGN_PURPOSES, GOLD_REFERENCE_PRICES } from "@/constants";
 
 // ─── Number Formatting ────────────────────────────────────────────────────────
 
@@ -398,7 +398,7 @@ export function buildCertificateText(d: FormData): string {
   const pronoun = getPossessivePronoun(d.salutation);
 
   let text = `TO WHOMSOEVER IT MAY CONCERN\n\nNETWORTH CERTIFICATE\n\n`;
-  text += `I, ${CA_FIRM.partnerName}, member of The Institute of Chartered Accountants of India, do hereby certify that I have reviewed the financial condition of the Applicant, ${applicantName}, with the view to furnish ${pronoun} net worth ${purposeTxt}. The Below detail of the assets are obtained as on ${dateStr}\n\n`;
+  text += `I, ${d.signatoryName || "[Signatory Name]"}, member of The Institute of Chartered Accountants of India, do hereby certify that I have reviewed the financial condition of the Applicant, ${applicantName}, with the view to furnish ${pronoun} net worth ${purposeTxt}. The Below detail of the assets are obtained as on ${dateStr}\n\n`;
 
   if (!isForeign) {
     text += `Sl. No. | SOURCES OF FUNDS       | INDIAN (Rs.)  | REFERENCE (ANNEXURES)\n`;
@@ -493,9 +493,9 @@ export function buildCertificateText(d: FormData): string {
   }
   text += `Total                                               | ${formatINR(totals.savingsINR)}\n`;
 
-  text += `\nFor ${CA_FIRM.name},\n${CA_FIRM.type},\nFRN ${CA_FIRM.frn}\n\n`;
-  text += `${CA_FIRM.partnerName}\n${CA_FIRM.partnerTitle}\nMembership No. ${CA_FIRM.membershipNo}\n`;
-  text += `Date: ${dateStr}\nPlace: ${CA_FIRM.place}\nUDIN: ${d.udin || "__________________________"}\n`;
+  text += `\nFor ${d.firmName || "[Firm Name]"},\n${d.firmType || "Chartered Accountants"},\nFRN ${d.firmFRN || "[FRN]"}\n\n`;
+  text += `${d.signatoryName || "[Signatory Name]"}\n${d.signatoryTitle || "[Designation]"}\nMembership No. ${d.membershipNo || "[Membership No.]"}\n`;
+  text += `Date: ${dateStr}\nPlace: ${d.signPlace || "[Place]"}\nUDIN: ${d.udin || "__________________________"}\n`;
 
   return text;
 }

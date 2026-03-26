@@ -2,7 +2,6 @@
 
 import { forwardRef } from "react";
 import type { FormData } from "@/types";
-import { CA_FIRM } from "@/constants";
 import {
   isForeignPurpose,
   getPurposePhrase,
@@ -179,7 +178,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
 
         {/* ── Body paragraph ── */}
         <p style={{ textAlign: "justify", marginBottom: 16 }}>
-          I, <strong>{CA_FIRM.partnerName}</strong>, member of The Institute of Chartered Accountants of
+          I, <strong>{data.signatoryName || "[Signatory Name]"}</strong>, member of The Institute of Chartered Accountants of
           India, do hereby certify that I have reviewed the financial condition of the Applicant,{" "}
           <strong style={{ textDecoration: "underline" }}>{name}</strong>, with the view to furnish
           {" "}{pronoun} net worth <em>{purposeTxt}</em>. The Below detail of the assets are obtained as on{" "}
@@ -335,14 +334,14 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         {/* ── Signature Block ── */}
         <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 36 }}>
           <div>
-            <p style={{ margin: "0 0 2px" }}><strong>For {CA_FIRM.name},</strong></p>
-            <p style={{ margin: "0 0 2px" }}>{CA_FIRM.type},</p>
-            <p style={{ margin: "0 0 18px" }}>FRN {CA_FIRM.frn}</p>
-            <p style={{ margin: "0 0 2px" }}><strong>{CA_FIRM.partnerName}</strong></p>
-            <p style={{ margin: "0 0 2px" }}>{CA_FIRM.partnerTitle}</p>
-            <p style={{ margin: "0 0 18px" }}>Membership No. {CA_FIRM.membershipNo}</p>
+            <p style={{ margin: "0 0 2px" }}><strong>For {data.firmName || "[Firm Name]"},</strong></p>
+            <p style={{ margin: "0 0 2px" }}>{data.firmType || "Chartered Accountants"},</p>
+            <p style={{ margin: "0 0 18px" }}>FRN {data.firmFRN || "[FRN]"}</p>
+            <p style={{ margin: "0 0 2px" }}><strong>{data.signatoryName || "[Signatory Name]"}</strong></p>
+            <p style={{ margin: "0 0 2px" }}>{data.signatoryTitle || "[Designation]"}</p>
+            <p style={{ margin: "0 0 18px" }}>Membership No. {data.membershipNo || "[Membership No.]"}</p>
             <p style={{ margin: "0 0 2px" }}>Date: {dateStr}</p>
-            <p style={{ margin: "0 0 2px" }}>Place: {CA_FIRM.place}</p>
+            <p style={{ margin: "0 0 2px" }}>Place: {data.signPlace || "[Place]"}</p>
             <p style={{ margin: 0 }}>UDIN: {data.udin || "__________________________"}</p>
           </div>
         </div>
