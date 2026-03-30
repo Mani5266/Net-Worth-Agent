@@ -21,6 +21,7 @@ const FIELD_LABELS: Record<string, string> = {
   movableTypes: "Asset Persons",
   savingsTypes: "Savings Persons",
   supportingDocs: "Supporting Documents",
+  otherSupportingDocs: "Other Supporting Documents",
   goldGrams: "Gold Weight (grams)",
   propertyAddress: "Property Address",
   bankDetails: "Bank Details",
@@ -75,7 +76,7 @@ const TRACKED_KEYS: (keyof FormData)[] = [
   "salutation", "fullName", "passportNumber", "udin",
   "incomeTypes", "immovableTypes", "movableTypes", "savingsTypes",
   "goldGrams", "propertyAddress", "bankDetails",
-  "supportingDocs",
+  "supportingDocs", "otherSupportingDocs",
 ];
 
 /** Keys for amount arrays — tracked at the row level */

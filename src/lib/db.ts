@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { FormDataSchema } from "./schemas";
 import { logAction } from "./audit";
+import { INITIAL_STATE } from "@/hooks/useFormData";
 import type { FormData, CertificateRecord, DocumentRecord } from "@/types";
 
 /**
@@ -21,8 +22,9 @@ async function getRequiredUserId(): Promise<string> {
 function parseFormData(raw: unknown): FormData {
   const result = FormDataSchema.safeParse(raw);
   if (result.success) return result.data;
-  // Fallback: trust the data shape for legacy records but log the issue
-  return raw as FormData;
+  // Fallback: merge with INITIAL_STATE defaults for legacy records missing new fields
+  const merged = { ...INITIAL_STATE, ...(raw as Record<string, unknown>) };
+  return merged as FormData;
 }
 
 /**

@@ -189,6 +189,7 @@ export const FormDataSchema = z.object({
   movableFR: z.array(z.string()),
   movableDocs: DocsMapSchema,
   goldGrams: z.string(),
+  goldKarat: z.enum(["22K", "24K"]).default("22K"),
 
   // Step 6 – Annexure IV: Current Savings
   savingsTypes: z.array(z.string()),
@@ -200,6 +201,7 @@ export const FormDataSchema = z.object({
   bankDetails: z.string(),
   policies: z.array(z.string()),
   supportingDocs: z.array(z.string()),
+  otherSupportingDocs: z.array(z.string()).default([]),
 
   // Step 7 – Signatory Details (CA Firm / Partner)
   firmName: z.string(),

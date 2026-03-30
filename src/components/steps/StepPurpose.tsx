@@ -26,7 +26,10 @@ export function StepPurpose() {
               label="Destination Country"
               required
               value={data.country}
-              onChange={(e) => updateField("country", e.target.value)}
+              onChange={(e) => {
+                updateField("country", e.target.value);
+                updateField("exchangeRate", "");
+              }}
               options={COUNTRIES}
               placeholder="Select country..."
             />

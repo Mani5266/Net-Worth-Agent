@@ -5,20 +5,14 @@ import { Section, Checkbox, Select, Input } from "@/components/ui";
 import { FileUpload } from "@/components/ui/FileUpload";
 import { SAVINGS_PERSONS, SAVINGS_CATEGORY_OPTIONS, SUPPORTING_DOCS } from "@/constants";
 import { useFormContext } from "@/hooks/useFormContext";
-import { Plus, Trash2, Landmark, Pin } from "lucide-react";
+import { fmtForeignAmount } from "@/lib/utils";
+import { Plus, Trash2, Landmark, Pin, PlusCircle, X } from "lucide-react";
 import type { SavingsEntry } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseNum(val: string): number {
   return parseFloat(val.replace(/,/g, "")) || 0;
-}
-
-function fmtUSD(inr: string, rate: number): string {
-  const n = parseNum(inr);
-  if (!n || !rate) return "";
-  const usd = n / rate;
-  return `\u2248 $${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** Build the "Particulars" label for each savings row in the amounts table */
@@ -28,13 +22,12 @@ function savingsRowLabel(
   personName: string,
   applicantName: string,
 ): string {
-  const catName = displayCategory(entry);
   const desc = entry.description.trim();
-  const prefix = desc ? `${catName} \u2013 ${desc}` : catName;
+  const prefix = desc || "Savings Item";
 
   if (person === "Self") {
     const name = personName.trim() || applicantName || "[Applicant]";
-    return `${prefix} in the name of Applicant (${name})`;
+    return `${prefix} in the name of Applicant \u2014 ${name}`;
   }
   const name = personName.trim() || `[${person}\u2019s name]`;
   return `${prefix} in the name of Applicant\u2019s ${person} \u2014 ${name}`;
@@ -58,7 +51,8 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
   const {
     data,
     isForeign,
-    usdRate,
+    foreignRate,
+    currencyInfo,
     toggleArrayItem,
     updateField,
     updateLabel,
@@ -68,6 +62,7 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
 
   const selectedPersons = data.savingsTypes; // repurposed: person IDs
   const prevPersonsRef = useRef<string[]>(selectedPersons);
+  const prevLabelsRef = useRef<string>(JSON.stringify(data.savingsLabels));
 
   // ── Clean up when persons are unchecked ─────────────────────────────────
   useEffect(() => {
@@ -103,6 +98,16 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
     rebuildRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPersons]);
+
+  // ── Rebuild row labels when person names change (cross-annexure sync) ───
+  useEffect(() => {
+    const serialized = JSON.stringify(data.savingsLabels);
+    if (serialized !== prevLabelsRef.current) {
+      prevLabelsRef.current = serialized;
+      rebuildRows();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.savingsLabels]);
 
   // ── Auto-tick supporting docs when a person is added ────────────────────
   const handleTogglePerson = (person: string) => {
@@ -223,7 +228,7 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
     updateField("savingsFR", fr);
   };
 
-  const showUSD = isForeign && usdRate != null && usdRate > 0;
+  const showForeign = isForeign && foreignRate != null && foreignRate > 0;
 
   // ── Flatten all entries for the amounts table ───────────────────────────
   const allEntries: { person: string; entryIndex: number; entry: SavingsEntry }[] = [];
@@ -291,8 +296,6 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                   value={personName}
                   onChange={(e) => {
                     updateLabel("savingsLabels")(person, e.target.value);
-                    // Rebuild row labels with new name
-                    setTimeout(() => rebuildRowsFromEntries(data.savingsEntries), 0);
                   }}
                   placeholder={
                     person === "Self"
@@ -425,7 +428,7 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                 <div className="text-white font-bold text-xs">Indian (Rs.)</div>
                 {isForeign && (
                   <div className="text-white font-bold text-xs">
-                    {data.country || "Foreign"} (USD $)
+                    {data.country || "Foreign"}
                   </div>
                 )}
               </div>
@@ -433,11 +436,11 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
               {/* Table rows */}
               {allEntries.map(({ person, entry }, flatIdx) => {
                 const inrVal = (data.savingsRows ?? [])[flatIdx]?.inr ?? "";
-                const usdLabel = showUSD && usdRate ? fmtUSD(inrVal, usdRate) : "";
+                const foreignLabel = showForeign && foreignRate ? fmtForeignAmount(inrVal, foreignRate, currencyInfo) : "";
                 const personName = data.savingsLabels[person] ?? "";
                 const catName = displayCategory(entry);
                 const desc = entry.description.trim();
-                const prefix = desc ? `${catName} \u2013 ${desc}` : catName;
+                const prefix = desc || catName;
 
                 return (
                   <div
@@ -454,7 +457,7 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                     <div className="flex flex-col gap-0.5 pr-3 self-center">
                       <span className="text-sm text-slate-700 leading-tight">
                         {person === "Self"
-                          ? `${prefix} in the name of Applicant (${personName.trim() || data.fullName || "Self"})`
+                          ? `${prefix} in the name of Applicant \u2014 ${personName.trim() || data.fullName || "Self"}`
                           : `${prefix} in the name of Applicant\u2019s ${person} \u2014 ${personName.trim() || `[${person}\u2019s name]`}`}
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">
@@ -474,9 +477,9 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                           focus:outline-none focus:ring-2 focus:ring-sky-600/20 focus:border-sky-600
                           transition-colors"
                       />
-                      {showUSD && usdLabel && (
+                      {showForeign && foreignLabel && (
                         <span className="text-[10px] text-sky-700 font-medium pl-1">
-                          {usdLabel}
+                          {foreignLabel}
                         </span>
                       )}
                     </div>
@@ -484,12 +487,12 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                     {/* Foreign column */}
                     {isForeign && (
                       <div className="flex flex-col gap-0.5 self-center">
-                        {showUSD ? (
+                        {showForeign ? (
                           <div
                             className="px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50
                               text-xs w-full text-sky-800 font-semibold"
                           >
-                            {usdLabel || <span className="text-slate-400">Auto</span>}
+                            {foreignLabel || <span className="text-slate-400">Auto</span>}
                           </div>
                         ) : (
                           <input
@@ -497,7 +500,7 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                             value={data.savingsFR[flatIdx] ?? ""}
                             onChange={(e) => updateRowFR(flatIdx, e.target.value)}
                             placeholder="Amount"
-                            aria-label={`USD amount for savings entry ${flatIdx + 1}`}
+                            aria-label={`${currencyInfo.code} amount for savings entry ${flatIdx + 1}`}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
                               focus:outline-none focus:ring-2 focus:ring-sky-600/20 focus:border-sky-600
                               transition-colors"
@@ -510,11 +513,11 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
               })}
 
               {/* Rate badge */}
-              {showUSD && (
+              {showForeign && (
                 <div className="px-4 py-2 bg-sky-50 border-t border-sky-100 flex items-center gap-1.5">
                   <Pin className="w-3 h-3 text-sky-600 shrink-0" />
                   <span className="text-[10px] text-sky-700">
-                    Rate used: <strong>1 USD = Rs.{usdRate?.toFixed(2)}</strong>
+                    Rate used: <strong>1 {currencyInfo.code} = Rs.{foreignRate?.toFixed(2)}</strong>
                   </span>
                 </div>
               )}
@@ -526,11 +529,11 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
         {isForeign && (
           <div className="mt-1">
             <Input
-              label="Exchange Rate (as on last savings date) *"
-              placeholder="e.g. 1 USD = 84.50 INR"
+              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
+              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
               value={data.exchangeRate}
               onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint="Foreign currency column is auto-calculated by dividing INR total by this rate"
+              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
             />
           </div>
         )}
@@ -548,6 +551,76 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
               onToggle={() => toggleArrayItem("supportingDocs")(doc)}
             />
           ))}
+
+          {/* Other — dynamic list */}
+          {(() => {
+            const otherDocs = data.otherSupportingDocs ?? [];
+            return (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-sm text-slate-700 select-none shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={otherDocs.length > 0}
+                      onChange={() => {
+                        if (otherDocs.length > 0) {
+                          updateField("otherSupportingDocs", []);
+                        } else {
+                          updateField("otherSupportingDocs", [""]);
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 text-navy-800
+                        focus:ring-2 focus:ring-navy-900/10 focus:ring-offset-0
+                        accent-navy-800 cursor-pointer"
+                    />
+                    <span>Other</span>
+                  </label>
+                </div>
+
+                {otherDocs.length > 0 && (
+                  <div className="ml-6 mt-1 space-y-2">
+                    {otherDocs.map((doc, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={doc}
+                          onChange={(e) => {
+                            const updated = [...otherDocs];
+                            updated[idx] = e.target.value;
+                            updateField("otherSupportingDocs", updated);
+                          }}
+                          placeholder={`Other document ${idx + 1}`}
+                          className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm
+                            focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = otherDocs.filter((_, i) => i !== idx);
+                            updateField("otherSupportingDocs", updated.length > 0 ? updated : []);
+                          }}
+                          className="p-1 text-red-400 hover:text-red-600 transition-colors"
+                          title="Remove"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateField("otherSupportingDocs", [...otherDocs, ""]);
+                      }}
+                      className="flex items-center gap-1 text-xs text-navy-700 hover:text-navy-900 font-medium transition-colors"
+                    >
+                      <PlusCircle size={14} />
+                      Add another
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
     </Section>

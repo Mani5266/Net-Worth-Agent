@@ -5,6 +5,7 @@ import { Section, Checkbox, Select, Input } from "@/components/ui";
 import { FileUpload } from "@/components/ui/FileUpload";
 import { PROPERTY_PERSONS, PROPERTY_TYPE_OPTIONS } from "@/constants";
 import { useFormContext } from "@/hooks/useFormContext";
+import { fmtForeignAmount } from "@/lib/utils";
 import { Plus, Trash2, Pin, Building2 } from "lucide-react";
 import type { ImmovableProperty } from "@/types";
 
@@ -14,27 +15,22 @@ function parseNum(val: string): number {
   return parseFloat(val.replace(/,/g, "")) || 0;
 }
 
-function fmtUSD(inr: string, rate: number): string {
-  const n = parseNum(inr);
-  if (!n || !rate) return "";
-  const usd = n / rate;
-  return `\u2248 $${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 /** Build the "Particulars" label for each property row in the amounts table */
 function propertyRowLabel(
   person: string,
   address: string,
   personName: string,
   applicantName: string,
+  propertyType?: string,
 ): string {
   const addr = address.trim() || "[property address]";
+  const typeLabel = propertyType?.trim() || "Address of the immovable property";
   if (person === "Self") {
     const name = personName.trim() || applicantName || "[Applicant]";
-    return `Address of the immovable property \u2014 ${addr} registered in the name of Applicant (${name})`;
+    return `${typeLabel} \u2014 ${addr} registered in the name of Applicant \u2014 ${name}`;
   }
   const name = personName.trim() || `[${person}\u2019s name]`;
-  return `Address of the immovable property \u2014 ${addr} registered in the name of Applicant\u2019s ${person} \u2014 ${name}`;
+  return `${typeLabel} \u2014 ${addr} registered in the name of Applicant\u2019s ${person} \u2014 ${name}`;
 }
 
 /** Resolve display label for a property type */
@@ -55,7 +51,8 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
   const {
     data,
     isForeign,
-    usdRate,
+    foreignRate,
+    currencyInfo,
     toggleArrayItem,
     updateField,
     updateLabel,
@@ -65,6 +62,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
 
   const selectedPersons = data.immovableTypes; // repurposed: person IDs
   const prevPersonsRef = useRef<string[]>(selectedPersons);
+  const prevLabelsRef = useRef<string>(JSON.stringify(data.immovableLabels));
 
   // ── Clean up when persons are unchecked ─────────────────────────────────
   useEffect(() => {
@@ -101,6 +99,16 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPersons]);
 
+  // ── Rebuild row labels when person names change (cross-annexure sync) ───
+  useEffect(() => {
+    const serialized = JSON.stringify(data.immovableLabels);
+    if (serialized !== prevLabelsRef.current) {
+      prevLabelsRef.current = serialized;
+      rebuildRows();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.immovableLabels]);
+
   // ── Rebuild immovableRows + immovableFR from structured properties ──────
   const rebuildRows = () => {
     const rows: { label: string; inr: string }[] = [];
@@ -112,7 +120,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
       const props = data.immovableProperties[person] ?? [];
       const personName = data.immovableLabels[person] ?? "";
       for (const prop of props) {
-        const label = propertyRowLabel(person, prop.address, personName, data.fullName);
+        const label = propertyRowLabel(person, prop.address, personName, data.fullName, displayPropertyType(prop));
         // Try to preserve existing amount at this index
         const existingRow = data.immovableRows[flatIdx];
         rows.push({ label, inr: existingRow?.inr ?? "" });
@@ -135,7 +143,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
       [person]: [...current, newProp],
     });
     // Add a new row + FR entry for this property
-    const label = propertyRowLabel(person, "", data.immovableLabels[person] ?? "", data.fullName);
+    const label = propertyRowLabel(person, "", data.immovableLabels[person] ?? "", data.fullName, "");
     updateField("immovableRows", [...data.immovableRows, { label, inr: "" }]);
     updateField("immovableFR", [...data.immovableFR, ""]);
   };
@@ -188,7 +196,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
       const props = propsMap[person] ?? [];
       const personName = data.immovableLabels[person] ?? "";
       for (const prop of props) {
-        const label = propertyRowLabel(person, prop.address, personName, data.fullName);
+        const label = propertyRowLabel(person, prop.address, personName, data.fullName, displayPropertyType(prop));
         const existingRow = data.immovableRows[flatIdx];
         rows.push({ label, inr: existingRow?.inr ?? "" });
         frArr.push(data.immovableFR[flatIdx] ?? "");
@@ -217,7 +225,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
     updateField("immovableFR", fr);
   };
 
-  const showUSD = isForeign && usdRate != null && usdRate > 0;
+  const showForeign = isForeign && foreignRate != null && foreignRate > 0;
 
   // ── Count total properties for the amounts table ────────────────────────
   const allProperties: { person: string; propIndex: number; prop: ImmovableProperty }[] = [];
@@ -284,8 +292,6 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                   value={personName}
                   onChange={(e) => {
                     updateLabel("immovableLabels")(person, e.target.value);
-                    // Rebuild row labels with new name
-                    setTimeout(() => rebuildRowsFromProps(data.immovableProperties), 0);
                   }}
                   placeholder={
                     person === "Self"
@@ -405,7 +411,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                 <div className="text-white font-bold text-xs">Indian (Rs.)</div>
                 {isForeign && (
                   <div className="text-white font-bold text-xs">
-                    {data.country || "Foreign"} (USD $)
+                    {data.country || "Foreign"}
                   </div>
                 )}
               </div>
@@ -413,7 +419,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
               {/* Table rows */}
               {allProperties.map(({ person, prop }, flatIdx) => {
                 const inrVal = data.immovableRows[flatIdx]?.inr ?? "";
-                const usdLabel = showUSD && usdRate ? fmtUSD(inrVal, usdRate) : "";
+                const foreignLabel = showForeign && foreignRate ? fmtForeignAmount(inrVal, foreignRate, currencyInfo) : "";
                 const personName = data.immovableLabels[person] ?? "";
                 const addr = prop.address.trim() || "[property address]";
                 const typeName = displayPropertyType(prop);
@@ -433,7 +439,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                     <div className="flex flex-col gap-0.5 pr-3 self-center">
                       <span className="text-sm text-slate-700 leading-tight">
                         {person === "Self"
-                          ? `${addr} registered in the name of Applicant (${personName.trim() || data.fullName || "Self"})`
+                          ? `${addr} registered in the name of Applicant \u2014 ${personName.trim() || data.fullName || "Self"}`
                           : `${addr} registered in the name of Applicant\u2019s ${person} \u2014 ${personName.trim() || `[${person}\u2019s name]`}`}
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">
@@ -453,9 +459,9 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                           focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                           transition-colors"
                       />
-                      {showUSD && usdLabel && (
+                      {showForeign && foreignLabel && (
                         <span className="text-[10px] text-navy-700 font-medium pl-1">
-                          {usdLabel}
+                          {foreignLabel}
                         </span>
                       )}
                     </div>
@@ -463,12 +469,12 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                     {/* Foreign column */}
                     {isForeign && (
                       <div className="flex flex-col gap-0.5 self-center">
-                        {showUSD ? (
+                        {showForeign ? (
                           <div
                             className="px-2.5 py-1.5 rounded-lg border border-navy-200 bg-navy-50
                               text-xs w-full text-navy-800 font-semibold"
                           >
-                            {usdLabel || <span className="text-slate-400">Auto</span>}
+                            {foreignLabel || <span className="text-slate-400">Auto</span>}
                           </div>
                         ) : (
                           <input
@@ -476,7 +482,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                             value={data.immovableFR[flatIdx] ?? ""}
                             onChange={(e) => updateRowFR(flatIdx, e.target.value)}
                             placeholder="Amount"
-                            aria-label={`USD amount for property ${flatIdx + 1}`}
+                            aria-label={`${currencyInfo.code} amount for property ${flatIdx + 1}`}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
                               focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                               transition-colors"
@@ -489,11 +495,11 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
               })}
 
               {/* Rate badge */}
-              {showUSD && (
+              {showForeign && (
                 <div className="px-4 py-2 bg-navy-50 border-t border-navy-100 flex items-center gap-1.5">
                   <Pin className="w-3 h-3 text-navy-600 shrink-0" />
                   <span className="text-[10px] text-navy-700">
-                    Rate used: <strong>1 USD = Rs.{usdRate?.toFixed(2)}</strong>
+                    Rate used: <strong>1 {currencyInfo.code} = Rs.{foreignRate?.toFixed(2)}</strong>
                   </span>
                 </div>
               )}
@@ -505,11 +511,11 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
         {isForeign && (
           <div className="mt-1">
             <Input
-              label="Exchange Rate (as on last savings date) *"
-              placeholder="e.g. 1 USD = 84.50 INR"
+              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
+              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
               value={data.exchangeRate}
               onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint="Foreign currency column is auto-calculated by dividing INR total by this rate"
+              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
             />
           </div>
         )}

@@ -63,6 +63,19 @@ export const INCOME_PERSONS: string[] = [
   "Spouse",
 ];
 
+// ─── Assessment Year Options ──────────────────────────────────────────────────
+
+export const ASSESSMENT_YEAR_OPTIONS: { value: string; label: string }[] = (() => {
+  const currentYear = new Date().getFullYear();
+  const options: { value: string; label: string }[] = [];
+  // Generate years from 5 years ago to 2 years ahead
+  for (let y = currentYear - 5; y <= currentYear + 2; y++) {
+    const label = `${y}-${String(y + 1).slice(-2)}`;
+    options.push({ value: label, label });
+  }
+  return options.reverse(); // Most recent first
+})();
+
 // ─── Property Persons (Annexure II redesign) ──────────────────────────────────
 // Whose property is being declared — same person list as income.
 
@@ -95,7 +108,7 @@ export const IMMOVABLE_TYPES: string[] = [
 export const MOVABLE_TYPES: string[] = [
   "Gold & Jewellery",
   "Vehicles",
-  "Household Assets (if required)",
+  "Household Assets",
   "Other Movable Assets",
 ];
 
@@ -114,7 +127,7 @@ export const MOVABLE_PERSONS: string[] = [
 export const MOVABLE_ASSET_OPTIONS: string[] = [
   "Gold & Jewellery",
   "Vehicles",
-  "Household Assets (if required)",
+  "Household Assets",
   "Other Movable Assets",
 ];
 
@@ -193,7 +206,34 @@ export const GOLD_REFERENCE_PRICES = {
   source: "India Bullion and Jewellers Association (IBJA) - Approximate",
 } as const;
 
+// ─── Currency Mapping ─────────────────────────────────────────────────────────
+// Maps each country dropdown value to its ISO currency code, symbol, and locale.
+
+export interface CurrencyInfo {
+  code: string;        // ISO 4217 currency code (e.g. "USD")
+  symbol: string;      // Currency symbol (e.g. "$")
+  label: string;       // Short display label (e.g. "USD $")
+  locale: string;      // Locale for number formatting
+  fallbackRate: number; // Approximate INR-per-unit fallback rate
+}
+
+export const COUNTRY_CURRENCY_MAP: Record<string, CurrencyInfo> = {
+  "USA ($)":              { code: "USD", symbol: "$",   label: "USD $",   locale: "en-US", fallbackRate: 94.99 },
+  "UK (£)":               { code: "GBP", symbol: "£",   label: "GBP £",   locale: "en-GB", fallbackRate: 125.85 },
+  "Europe – Euro (€)":    { code: "EUR", symbol: "€",   label: "EUR €",   locale: "de-DE", fallbackRate: 109.21 },
+  "Canada (CAD $)":       { code: "CAD", symbol: "C$",  label: "CAD $",   locale: "en-CA", fallbackRate: 68.37 },
+  "Australia (AUD $)":    { code: "AUD", symbol: "A$",  label: "AUD $",   locale: "en-AU", fallbackRate: 65.14 },
+  "UAE (AED)":            { code: "AED", symbol: "د.إ", label: "AED",     locale: "ar-AE", fallbackRate: 25.87 },
+  "Singapore (SGD)":      { code: "SGD", symbol: "S$",  label: "SGD $",   locale: "en-SG", fallbackRate: 73.67 },
+  "Japan (¥)":            { code: "JPY", symbol: "¥",   label: "JPY ¥",   locale: "ja-JP", fallbackRate: 0.5928 },
+  "Other":                { code: "USD", symbol: "$",   label: "USD $",   locale: "en-US", fallbackRate: 94.99 },
+};
+
+/** Default currency info (USD) used when country is not set or unrecognized */
+export const DEFAULT_CURRENCY: CurrencyInfo = COUNTRY_CURRENCY_MAP["USA ($)"]!;
+
 // ─── Exchange Rate Fallback ───────────────────────────────────────────────────
 // Used when the live exchange rate API is unavailable.
+// Kept for backward compatibility — prefer CurrencyInfo.fallbackRate for multi-currency.
 
-export const EXCHANGE_RATE_FALLBACK_USD_INR = 83.5;
+export const EXCHANGE_RATE_FALLBACK_USD_INR = 94.99;

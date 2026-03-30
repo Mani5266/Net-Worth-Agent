@@ -5,21 +5,15 @@ import { Section, Checkbox, Select, Input } from "@/components/ui";
 import { FileUpload } from "@/components/ui/FileUpload";
 import { MOVABLE_PERSONS, MOVABLE_ASSET_OPTIONS } from "@/constants";
 import { useFormContext } from "@/hooks/useFormContext";
-import { parseAmount, validateGoldValue, estimateGoldValue, formatINR } from "@/lib/utils";
-import { Plus, Trash2, Package, Pin } from "lucide-react";
+import { useGoldPrice } from "@/hooks/useGoldPrice";
+import { formatINR, fmtForeignAmount } from "@/lib/utils";
+import { Plus, Trash2, Package, Pin, Scale } from "lucide-react";
 import type { MovableAsset } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseNum(val: string): number {
   return parseFloat(val.replace(/,/g, "")) || 0;
-}
-
-function fmtUSD(inr: string, rate: number): string {
-  const n = parseNum(inr);
-  if (!n || !rate) return "";
-  const usd = n / rate;
-  return `\u2248 $${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** Build the "Particulars" label for each asset row in the amounts table */
@@ -29,13 +23,12 @@ function assetRowLabel(
   personName: string,
   applicantName: string,
 ): string {
-  const typeName = displayAssetType(asset);
   const desc = asset.description.trim();
-  const prefix = desc ? `${typeName} \u2013 ${desc}` : typeName;
+  const prefix = desc || "Movable Asset";
 
   if (person === "Self") {
     const name = personName.trim() || applicantName || "[Applicant]";
-    return `${prefix} in the name of Applicant (${name})`;
+    return `${prefix} in the name of Applicant \u2014 ${name}`;
   }
   const name = personName.trim() || `[${person}\u2019s name]`;
   return `${prefix} in the name of Applicant\u2019s ${person} \u2014 ${name}`;
@@ -59,7 +52,8 @@ export function StepMovable({ certificateId }: StepMovableProps) {
   const {
     data,
     isForeign,
-    usdRate,
+    foreignRate,
+    currencyInfo,
     toggleArrayItem,
     updateField,
     updateLabel,
@@ -67,8 +61,11 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     removeMovableDoc,
   } = useFormContext();
 
+  const goldPrice = useGoldPrice();
+
   const selectedPersons = data.movableTypes; // repurposed: person IDs
   const prevPersonsRef = useRef<string[]>(selectedPersons);
+  const prevLabelsRef = useRef<string>(JSON.stringify(data.movableLabels));
 
   // ── Clean up when persons are unchecked ─────────────────────────────────
   useEffect(() => {
@@ -104,6 +101,16 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     rebuildRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPersons]);
+
+  // ── Rebuild row labels when person names change (cross-annexure sync) ───
+  useEffect(() => {
+    const serialized = JSON.stringify(data.movableLabels);
+    if (serialized !== prevLabelsRef.current) {
+      prevLabelsRef.current = serialized;
+      rebuildRows();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.movableLabels]);
 
   // ── Rebuild movableRows + movableFR from structured assets ──────────────
   const rebuildRows = () => {
@@ -219,7 +226,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     updateField("movableFR", fr);
   };
 
-  const showUSD = isForeign && usdRate != null && usdRate > 0;
+  const showForeign = isForeign && foreignRate != null && foreignRate > 0;
 
   // ── Flatten all assets for the amounts table ────────────────────────────
   const allAssets: { person: string; assetIndex: number; asset: MovableAsset }[] = [];
@@ -230,26 +237,43 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     });
   }
 
-  // ── Gold detection & validation ─────────────────────────────────────────
-  // Show gold grams input if ANY person has a "Gold & Jewellery" asset
-  const hasGold = allAssets.some((a) => a.asset.assetType === "Gold & Jewellery");
+  // ── Gold auto-calculation ────────────────────────────────────────────────
   const goldGrams = parseFloat(data.goldGrams) || 0;
-
-  // Find first gold row index to get its declared value for validation
-  const goldFlatIndex = allAssets.findIndex((a) => a.asset.assetType === "Gold & Jewellery");
-  const goldDeclaredINR = goldFlatIndex >= 0
-    ? parseAmount(data.movableRows[goldFlatIndex]?.inr ?? "")
-    : 0;
-
-  const goldWarning = useMemo(
-    () => hasGold ? validateGoldValue(goldGrams, goldDeclaredINR) : null,
-    [hasGold, goldGrams, goldDeclaredINR]
+  const goldKarat = data.goldKarat || "22K";
+  const goldPricePerGram = goldKarat === "24K"
+    ? (goldPrice.price24k ?? 0)
+    : (goldPrice.price22k ?? 0);
+  const goldAutoAmount = useMemo(
+    () => goldGrams > 0 && goldPricePerGram > 0
+      ? Math.round(goldGrams * goldPricePerGram)
+      : 0,
+    [goldGrams, goldPricePerGram]
   );
 
-  const goldEstimate = useMemo(
-    () => hasGold && goldGrams > 0 ? estimateGoldValue(goldGrams) : null,
-    [hasGold, goldGrams]
-  );
+  // Auto-fill gold row amounts whenever grams or allAssets change
+  useEffect(() => {
+    if (!goldAutoAmount) return;
+    const rows = [...data.movableRows];
+    let changed = false;
+    let flatIdx = 0;
+    for (const person of selectedPersons) {
+      const assets = data.movableAssets[person] ?? [];
+      for (const asset of assets) {
+        if (asset.assetType === "Gold & Jewellery") {
+          const formatted = goldAutoAmount.toLocaleString("en-IN");
+          if (rows[flatIdx] && rows[flatIdx]!.inr !== formatted) {
+            rows[flatIdx] = { label: rows[flatIdx]!.label, inr: formatted };
+            changed = true;
+          }
+        }
+        flatIdx++;
+      }
+    }
+    if (changed) {
+      updateField("movableRows", rows);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goldAutoAmount, selectedPersons]);
 
   return (
     <Section title="Annexure III -- Movable Properties">
@@ -308,8 +332,6 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                   value={personName}
                   onChange={(e) => {
                     updateLabel("movableLabels")(person, e.target.value);
-                    // Rebuild row labels with new name
-                    setTimeout(() => rebuildRowsFromAssets(data.movableAssets), 0);
                   }}
                   placeholder={
                     person === "Self"
@@ -396,6 +418,88 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                       />
                     </div>
 
+                    {/* Gold weight + karat + auto-calculation (only for Gold & Jewellery) */}
+                    {asset.assetType === "Gold & Jewellery" && (
+                      <div className="mb-2">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Scale className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                            Gold Weight &amp; Purity
+                          </span>
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                          {/* Grams input */}
+                          <div className="flex-1 max-w-xs">
+                            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                              Weight (grams)
+                            </label>
+                            <input
+                              type="number"
+                              value={data.goldGrams}
+                              onChange={(e) => updateField("goldGrams", e.target.value)}
+                              placeholder="e.g. 50"
+                              className="px-2.5 py-1.5 rounded-lg border border-amber-300 text-xs w-full
+                                focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600
+                                transition-colors bg-amber-50 placeholder:text-slate-400"
+                            />
+                          </div>
+
+                          {/* Karat selector */}
+                          <div className="w-28">
+                            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                              Purity
+                            </label>
+                            <div className="flex rounded-lg border border-amber-300 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => updateField("goldKarat", "22K")}
+                                className={`flex-1 py-1.5 text-xs font-semibold transition-colors ${
+                                  goldKarat === "22K"
+                                    ? "bg-amber-600 text-white"
+                                    : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                }`}
+                              >
+                                22K
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateField("goldKarat", "24K")}
+                                className={`flex-1 py-1.5 text-xs font-semibold border-l border-amber-300 transition-colors ${
+                                  goldKarat === "24K"
+                                    ? "bg-amber-600 text-white"
+                                    : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                }`}
+                              >
+                                24K
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Auto-calculation result */}
+                        {goldAutoAmount > 0 && (
+                          <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
+                            <p className="font-semibold">
+                              Auto-calculated: {formatINR(goldAutoAmount)} ({goldKarat} @ Rs.{goldPricePerGram.toLocaleString("en-IN")}/g)
+                            </p>
+                            <p className="text-[10px] text-amber-600 mt-0.5">
+                              {goldKarat === "22K"
+                                ? `24K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price24k ?? 0)))}`
+                                : `22K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price22k ?? 0)))}`}
+                              {goldPrice.source && ` \u00B7 ${goldPrice.source}`}
+                              {goldPrice.updatedAt && ` \u00B7 Updated: ${goldPrice.updatedAt}`}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Loading / error state */}
+                        {goldPrice.loading && (
+                          <p className="mt-1 text-[10px] text-amber-500 italic">Fetching live gold prices...</p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Document upload */}
                     <FileUpload
                       label={`${displayAssetType(asset)} \u2013 ${person}`}
@@ -410,35 +514,6 @@ export function StepMovable({ certificateId }: StepMovableProps) {
             </div>
           );
         })}
-
-        {/* Gold weight + validation (shown when any person has gold) */}
-        {hasGold && (
-          <div>
-            <Input
-              label="Gold Weight (grams)"
-              type="number"
-              placeholder="e.g. 50"
-              value={data.goldGrams}
-              onChange={(e) => updateField("goldGrams", e.target.value)}
-            />
-            {/* Gold price reference */}
-            {goldEstimate && (
-              <div className="mt-1 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800">
-                <p className="font-semibold mb-0.5">Gold Price Reference ({goldGrams}g):</p>
-                <p>22K estimate: {formatINR(goldEstimate.estimated22k)} | 24K estimate: {formatINR(goldEstimate.estimated24k)}</p>
-                <p className="text-[10px] text-amber-600 mt-0.5">
-                  Acceptable range: {formatINR(goldEstimate.lowerBound)} - {formatINR(goldEstimate.upperBound)}
-                </p>
-              </div>
-            )}
-            {/* Gold valuation warning */}
-            {goldWarning && (
-              <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-[11px] text-red-700">
-                {goldWarning}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Step 3: Consolidated amounts table */}
         {allAssets.length > 0 && (
@@ -464,7 +539,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                 <div className="text-white font-bold text-xs">Indian (Rs.)</div>
                 {isForeign && (
                   <div className="text-white font-bold text-xs">
-                    {data.country || "Foreign"} (USD $)
+                    {data.country || "Foreign"}
                   </div>
                 )}
               </div>
@@ -472,11 +547,12 @@ export function StepMovable({ certificateId }: StepMovableProps) {
               {/* Table rows */}
               {allAssets.map(({ person, asset }, flatIdx) => {
                 const inrVal = data.movableRows[flatIdx]?.inr ?? "";
-                const usdLabel = showUSD && usdRate ? fmtUSD(inrVal, usdRate) : "";
+                const foreignLabel = showForeign && foreignRate ? fmtForeignAmount(inrVal, foreignRate, currencyInfo) : "";
                 const personName = data.movableLabels[person] ?? "";
                 const typeName = displayAssetType(asset);
                 const desc = asset.description.trim();
                 const prefix = desc ? `${typeName} \u2013 ${desc}` : typeName;
+                const isGoldRow = asset.assetType === "Gold & Jewellery";
 
                 return (
                   <div
@@ -493,29 +569,40 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                     <div className="flex flex-col gap-0.5 pr-3 self-center">
                       <span className="text-sm text-slate-700 leading-tight">
                         {person === "Self"
-                          ? `${prefix} in the name of Applicant (${personName.trim() || data.fullName || "Self"})`
+                          ? `${prefix} in the name of Applicant \u2014 ${personName.trim() || data.fullName || "Self"}`
                           : `${prefix} in the name of Applicant\u2019s ${person} \u2014 ${personName.trim() || `[${person}\u2019s name]`}`}
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">
                         {typeName} &middot; {person}
+                        {isGoldRow && goldGrams > 0 && ` \u00B7 ${goldGrams}g @ ${goldKarat}`}
                       </span>
                     </div>
 
-                    {/* INR input */}
+                    {/* INR input — auto-filled for gold, manual for others */}
                     <div className="flex flex-col gap-0.5 self-center">
-                      <input
-                        type="text"
-                        value={inrVal}
-                        onChange={(e) => updateRowInr(flatIdx, e.target.value)}
-                        placeholder="Enter amount"
-                        aria-label={`INR amount for asset ${flatIdx + 1}`}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
-                          focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600
-                          transition-colors"
-                      />
-                      {showUSD && usdLabel && (
+                      {isGoldRow && goldAutoAmount > 0 ? (
+                        <div
+                          className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50
+                            text-xs w-full text-amber-900 font-semibold"
+                          title="Auto-calculated from gold weight"
+                        >
+                          {formatINR(goldAutoAmount)}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={inrVal}
+                          onChange={(e) => updateRowInr(flatIdx, e.target.value)}
+                          placeholder="Enter amount"
+                          aria-label={`INR amount for asset ${flatIdx + 1}`}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
+                            focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600
+                            transition-colors"
+                        />
+                      )}
+                      {showForeign && foreignLabel && (
                         <span className="text-[10px] text-amber-700 font-medium pl-1">
-                          {usdLabel}
+                          {foreignLabel}
                         </span>
                       )}
                     </div>
@@ -523,12 +610,12 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                     {/* Foreign column */}
                     {isForeign && (
                       <div className="flex flex-col gap-0.5 self-center">
-                        {showUSD ? (
+                        {showForeign ? (
                           <div
                             className="px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50
                               text-xs w-full text-amber-800 font-semibold"
                           >
-                            {usdLabel || <span className="text-slate-400">Auto</span>}
+                            {foreignLabel || <span className="text-slate-400">Auto</span>}
                           </div>
                         ) : (
                           <input
@@ -536,7 +623,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                             value={data.movableFR[flatIdx] ?? ""}
                             onChange={(e) => updateRowFR(flatIdx, e.target.value)}
                             placeholder="Amount"
-                            aria-label={`USD amount for asset ${flatIdx + 1}`}
+                            aria-label={`${currencyInfo.code} amount for asset ${flatIdx + 1}`}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
                               focus:outline-none focus:ring-2 focus:ring-amber-600/20 focus:border-amber-600
                               transition-colors"
@@ -549,11 +636,11 @@ export function StepMovable({ certificateId }: StepMovableProps) {
               })}
 
               {/* Rate badge */}
-              {showUSD && (
+              {showForeign && (
                 <div className="px-4 py-2 bg-amber-50 border-t border-amber-100 flex items-center gap-1.5">
                   <Pin className="w-3 h-3 text-amber-600 shrink-0" />
                   <span className="text-[10px] text-amber-700">
-                    Rate used: <strong>1 USD = Rs.{usdRate?.toFixed(2)}</strong>
+                    Rate used: <strong>1 {currencyInfo.code} = Rs.{foreignRate?.toFixed(2)}</strong>
                   </span>
                 </div>
               )}
@@ -565,11 +652,11 @@ export function StepMovable({ certificateId }: StepMovableProps) {
         {isForeign && (
           <div className="mt-1">
             <Input
-              label="Exchange Rate (as on last savings date) *"
-              placeholder="e.g. 1 USD = 84.50 INR"
+              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
+              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
               value={data.exchangeRate}
               onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint="Foreign currency column is auto-calculated by dividing INR total by this rate"
+              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
             />
           </div>
         )}

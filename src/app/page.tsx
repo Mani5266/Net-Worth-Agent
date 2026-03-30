@@ -61,10 +61,27 @@ function WizardShell({ session }: { session: Session }) {
   const { data, setData, updateField, auditEntries, clearAudit } = useFormContext();
   const { toast } = useToast();
 
-  const [step, setStep] = useState(0);
+  // Initialize step from localStorage to survive browser refresh
+  const [step, setStep] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("networth_current_step");
+      if (saved !== null) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed < STEPS.length) {
+          return parsed;
+        }
+      }
+    }
+    return 0;
+  });
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const certRef = useRef<HTMLDivElement>(null);
+
+  // Persist step to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("networth_current_step", String(step));
+  }, [step]);
 
   // Supabase state
   const [certificateId, setCertificateId] = useState<string | null>(null);
@@ -127,7 +144,7 @@ function WizardShell({ session }: { session: Session }) {
         }
       }
 
-      // 2. Refresh persistence
+      // 2. Refresh persistence — restore certificate data
       const currentId = localStorage.getItem("networth_current_id");
       if (currentId) {
         try {
@@ -135,6 +152,7 @@ function WizardShell({ session }: { session: Session }) {
           const freshData = await getCertificate(currentId);
           setData(freshData);
           setCertificateId(currentId);
+          // Step is already restored by useState initializer above
         } catch {
           localStorage.removeItem("networth_current_id");
         } finally {
@@ -151,6 +169,7 @@ function WizardShell({ session }: { session: Session }) {
   const handleSignOut = useCallback(async () => {
     // Clear all sensitive data from localStorage
     localStorage.removeItem("networth_current_id");
+    localStorage.removeItem("networth_current_step");
     localStorage.removeItem("networth_resume_data");
     localStorage.removeItem("networth_resume_id");
     localStorage.removeItem("networth_view_only");
@@ -340,7 +359,7 @@ function WizardShell({ session }: { session: Session }) {
   // ── Layout ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f5f7fb" }}>
+    <div className="min-h-screen print-bg-none" style={{ backgroundColor: "#f5f7fb" }}>
       <div className="flex flex-col lg:flex-row min-h-screen">
         <Sidebar
           session={session}

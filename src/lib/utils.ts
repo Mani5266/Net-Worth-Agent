@@ -1,5 +1,6 @@
 import type { AnnexureRow, FormData, CertificateTotals, PurposeValue } from "@/types";
-import { FOREIGN_PURPOSES, GOLD_REFERENCE_PRICES } from "@/constants";
+import { FOREIGN_PURPOSES, GOLD_REFERENCE_PRICES, COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY } from "@/constants";
+import type { CurrencyInfo } from "@/constants";
 
 // ─── Number Formatting ────────────────────────────────────────────────────────
 
@@ -198,6 +199,23 @@ export function isForeignPurpose(purpose: PurposeValue | ""): boolean {
   return FOREIGN_PURPOSES.includes(purpose as PurposeValue);
 }
 
+/** Look up currency info for a country dropdown value. Falls back to USD. */
+export function getCurrencyInfo(country: string): CurrencyInfo {
+  return COUNTRY_CURRENCY_MAP[country] ?? DEFAULT_CURRENCY;
+}
+
+/** Format a foreign currency amount using the correct locale and symbol */
+export function fmtForeignAmount(inr: string | number, rate: number, currency: CurrencyInfo): string {
+  const n = typeof inr === "string" ? (parseFloat(inr.replace(/,/g, "")) || 0) : inr;
+  if (!n || !rate) return "";
+  const converted = n / rate;
+  const formatted = converted.toLocaleString(currency.locale, {
+    minimumFractionDigits: currency.code === "JPY" ? 0 : 2,
+    maximumFractionDigits: currency.code === "JPY" ? 0 : 2,
+  });
+  return `\u2248 ${currency.symbol}${formatted}`;
+}
+
 // ─── Gold Price Validation ────────────────────────────────────────────────────
 
 /**
@@ -260,7 +278,7 @@ export function buildMovableRows(d: FormData): AnnexureRow[] {
   const rows: AnnexureRow[] = [];
 
   d.movableTypes.forEach((type) => {
-    let label = resolveLabel(type, d.movableLabels?.[type]);
+    let label = d.movableLabels?.[type]?.trim() || "Movable Asset";
     if (type === "Gold & Jewellery") {
       const grams = d.goldGrams || "___";
       label = `Gold ornaments weighing ${grams} gms (In the Name of the Applicant)`;
@@ -314,7 +332,7 @@ export function buildSavingsRows(d: FormData): AnnexureRow[] {
   // Ticked categories excluding special ones handled above
   d.savingsTypes.forEach((type) => {
     if (type !== "Bank-Related Assets" && type !== "Insurance") {
-      const customLabel = resolveLabel(type, d.savingsLabels?.[type]);
+      const customLabel = d.savingsLabels?.[type]?.trim() || "Savings Item";
       rows.push({ label: customLabel, inr: "" });
     }
   });
@@ -339,7 +357,8 @@ export function computeTotals(d: FormData): CertificateTotals {
   const movableINR   = sumRows(movRows);
   const savingsINR   = sumRows(savRows);
 
-  const rate = parseFloat(d.exchangeRate) || 83; // Use 83 as default if not set
+  const currInfo = getCurrencyInfo(d.country);
+  const rate = parseFloat(d.exchangeRate) || currInfo.fallbackRate;
 
   // Use manual foreign values if any row has a non-empty value, otherwise compute from INR.
   // We check for non-empty strings rather than using `||` so that manual zero is respected.
@@ -394,6 +413,8 @@ export function buildCertificateText(d: FormData): string {
   const docs = d.supportingDocs.length > 0
     ? d.supportingDocs
     : ["Income tax return copies of Applicant.", "Valuation/self-declaration documents of immovable properties."];
+  const otherDocs = (d.otherSupportingDocs ?? []).filter((doc: string) => doc.trim() !== "");
+  const allDocs = [...docs, ...otherDocs];
 
   const pronoun = getPossessivePronoun(d.salutation);
 
@@ -421,18 +442,19 @@ export function buildCertificateText(d: FormData): string {
   }
 
   text += `The above figures are compiled from the following documents and certificates submitted before me:\n`;
-  docs.forEach((doc, i) => { text += `${i + 1}. ${doc}\n`; });
+  allDocs.forEach((doc, i) => { text += `${i + 1}. ${doc}\n`; });
 
   text += `\nANNEXURE-I    CURRENT INCOME\n`;
   text += `Particulars                                         | Indian (Rs.)\n`;
 
+  const ay = d.assessmentYear || deriveAssessmentYear(d.certDate);
   if (d.incomeTypes.length > 0) {
     d.incomeTypes.forEach((person, i) => {
       const personName = d.incomeLabels[person]?.trim() || (person === "Self" ? (d.fullName || "[Name]") : "[Name]");
       const base = person === "Self"
         ? "Income of the Applicant"
         : `Income of the Applicant\u2019s ${person}`;
-      const label = `${base} \u2013 ${personName}`;
+      const label = `${base} \u2013 ${personName} for the Assessment year ${ay}`;
       const inr = d.incomeRows[i]?.inr ?? "";
       text += `${label.padEnd(52)} | ${inr ? formatINR(parseAmount(inr)) : ""}\n`;
     });

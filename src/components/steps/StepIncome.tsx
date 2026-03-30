@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Section, Checkbox, Input } from "@/components/ui";
+import { Section, Checkbox, Input, Select } from "@/components/ui";
 import { FileUpload } from "@/components/ui/FileUpload";
-import { INCOME_PERSONS } from "@/constants";
-import { deriveAssessmentYear } from "@/lib/utils";
+import { INCOME_PERSONS, ASSESSMENT_YEAR_OPTIONS } from "@/constants";
+import { deriveAssessmentYear, fmtForeignAmount } from "@/lib/utils";
 import { useFormContext } from "@/hooks/useFormContext";
 import { Pin } from "lucide-react";
 
@@ -13,17 +13,6 @@ import { Pin } from "lucide-react";
 function personRowLabel(person: string): string {
   if (person === "Self") return "Income of the Applicant";
   return `Income of the Applicant's ${person}`;
-}
-
-function parseNum(val: string): number {
-  return parseFloat(val.replace(/,/g, "")) || 0;
-}
-
-function fmtUSD(inr: string, rate: number): string {
-  const n = parseNum(inr);
-  if (!n || !rate) return "";
-  const usd = n / rate;
-  return `\u2248 $${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -36,7 +25,8 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
   const {
     data,
     isForeign,
-    usdRate,
+    foreignRate,
+    currencyInfo,
     toggleArrayItem,
     updateField,
     updateLabel,
@@ -44,9 +34,17 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
     removeIncomeDoc,
   } = useFormContext();
 
-  const assessmentYear = deriveAssessmentYear(data.certDate);
+  const derivedYear = deriveAssessmentYear(data.certDate);
+  const assessmentYear = data.assessmentYear || derivedYear;
   const selectedPersons = data.incomeTypes; // repurposed: person IDs
   const prevPersonsRef = useRef<string[]>(selectedPersons);
+
+  // Auto-set assessment year from cert date if not already set
+  useEffect(() => {
+    if (!data.assessmentYear && derivedYear) {
+      updateField("assessmentYear", derivedYear);
+    }
+  }, [derivedYear, data.assessmentYear, updateField]);
 
   // ── Sync incomeRows / incomeFR when persons change ──────────────────────
   useEffect(() => {
@@ -100,7 +98,7 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
     updateField("incomeFR", fr);
   };
 
-  const showUSD = isForeign && usdRate != null && usdRate > 0;
+  const showForeign = isForeign && foreignRate != null && foreignRate > 0;
 
   return (
     <Section title="Annexure I -- Current Income">
@@ -129,7 +127,15 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
             <p className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
               Income Amounts <span className="text-red-500">*</span>
             </p>
-            <p className="text-xs text-slate-400 mb-3">Assessment Year: {assessmentYear}</p>
+            <div className="mb-3 max-w-xs">
+              <Select
+                label="Assessment Year"
+                options={ASSESSMENT_YEAR_OPTIONS}
+                value={assessmentYear}
+                onChange={(e) => updateField("assessmentYear", e.target.value)}
+                placeholder="Select Assessment Year"
+              />
+            </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               {/* Table header */}
@@ -145,7 +151,7 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                 <div className="text-white font-bold text-xs">Indian (Rs.)</div>
                 {isForeign && (
                   <div className="text-white font-bold text-xs">
-                    {data.country || "Foreign"} (USD $)
+                    {data.country || "Foreign"}
                   </div>
                 )}
               </div>
@@ -153,7 +159,7 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
               {/* Table rows */}
               {selectedPersons.map((person, i) => {
                 const inrVal = data.incomeRows[i]?.inr ?? "";
-                const usdLabel = showUSD && usdRate ? fmtUSD(inrVal, usdRate) : "";
+                const foreignLabel = showForeign && foreignRate ? fmtForeignAmount(inrVal, foreignRate, currencyInfo) : "";
                 const personName = data.incomeLabels[person] ?? "";
 
                 return (
@@ -195,7 +201,7 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                         </span>
                       </div>
 
-                      {/* INR input + live USD hint */}
+                      {/* INR input + live foreign hint */}
                       <div className="flex flex-col gap-0.5 self-center">
                         <input
                           type="text"
@@ -207,9 +213,9 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                              focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                             transition-colors"
                         />
-                        {showUSD && usdLabel && (
+                        {showForeign && foreignLabel && (
                           <span className="text-[10px] text-navy-700 font-medium pl-1">
-                            {usdLabel}
+                            {foreignLabel}
                           </span>
                         )}
                       </div>
@@ -217,12 +223,12 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                       {/* Foreign column */}
                       {isForeign && (
                         <div className="flex flex-col gap-0.5 self-center">
-                          {showUSD ? (
+                          {showForeign ? (
                             <div
                              className="px-2.5 py-1.5 rounded-lg border border-navy-200 bg-navy-50
                                 text-xs w-full text-navy-800 font-semibold"
                             >
-                              {usdLabel || <span className="text-slate-400">Auto</span>}
+                              {foreignLabel || <span className="text-slate-400">Auto</span>}
                             </div>
                           ) : (
                             <input
@@ -230,7 +236,7 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                               value={data.incomeFR[i] ?? ""}
                               onChange={(e) => updateRowFR(i, e.target.value)}
                               placeholder="Amount"
-                              aria-label={`USD amount for ${person}`}
+                              aria-label={`${currencyInfo.code} amount for ${person}`}
                               className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
                                 focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
                                 transition-colors"
@@ -260,11 +266,11 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
               })}
 
               {/* Live rate badge */}
-              {showUSD && (
+              {showForeign && (
                 <div className="px-4 py-2 bg-navy-50 border-t border-navy-100 flex items-center gap-1.5">
                   <Pin className="w-3 h-3 text-navy-600 shrink-0" />
                   <span className="text-[10px] text-navy-700">
-                    Rate used: <strong>1 USD = Rs.{usdRate?.toFixed(2)}</strong>
+                    Rate used: <strong>1 {currencyInfo.code} = Rs.{foreignRate?.toFixed(2)}</strong>
                   </span>
                 </div>
               )}
@@ -276,11 +282,11 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
         {isForeign && (
           <div className="mt-1">
             <Input
-              label="Exchange Rate (as on last savings date) *"
-              placeholder="e.g. 1 USD = 84.50 INR"
+              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
+              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
               value={data.exchangeRate}
               onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint="Foreign currency column is auto-calculated by dividing INR total by this rate"
+              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
             />
           </div>
         )}

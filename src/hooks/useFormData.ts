@@ -43,6 +43,7 @@ export const INITIAL_STATE: FormData = {
   movableRows: INITIAL_MOVABLE_ROWS,
   movableFR: [],
   goldGrams: "",
+  goldKarat: "22K",
   // Step 6
   savingsTypes: [],
   savingsLabels: {},
@@ -52,6 +53,7 @@ export const INITIAL_STATE: FormData = {
   bankDetails: "",
   policies: [""],
   supportingDocs: [],
+  otherSupportingDocs: [],
   // Step 7 — Signatory Details
   firmName: "B A S T & ASSOCIATES",
   firmType: "Chartered Accountants",
@@ -88,14 +90,19 @@ export function useFormData() {
     []
   );
 
-  // Update a custom label for a checkbox type
+  // Update a custom label for a checkbox type — syncs name across all 4 annexure label maps
+  const ALL_LABEL_FIELDS = ["incomeLabels", "immovableLabels", "movableLabels", "savingsLabels"] as const;
+
   const updateLabel = useCallback(
-    (field: "incomeLabels" | "immovableLabels" | "movableLabels" | "savingsLabels") =>
+    (_field: "incomeLabels" | "immovableLabels" | "movableLabels" | "savingsLabels") =>
       (type: string, value: string) => {
-        setData((prev) => ({
-          ...prev,
-          [field]: { ...(prev[field] as Record<string, string>), [type]: value },
-        }));
+        setData((prev) => {
+          const next = { ...prev };
+          for (const lf of ALL_LABEL_FIELDS) {
+            next[lf] = { ...(prev[lf] as Record<string, string>), [type]: value };
+          }
+          return next;
+        });
       },
     []
   );

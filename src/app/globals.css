@@ -71,26 +71,69 @@ body {
 @media print {
   @page {
     size: A4;
-    margin: 15mm 18mm;
+    margin: 0;
   }
 
   .no-print {
     display: none !important;
   }
 
-  body {
-    background: white !important;
+  html, body {
+    background: #fff !important;
     font-size: 12pt;
     color: #000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
   }
 
-  .print-full {
-    padding: 0 !important;
+  /* Reset all wrappers between body and certificate to avoid background seams.
+     The .print-bg-none class is applied to the outermost page wrapper that has
+     an inline backgroundColor, ensuring it is overridden during print. */
+  #__next,
+  #__next > *,
+  main,
+  .print-bg-none {
     margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+    background: transparent !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* .print-full gets page-equivalent padding. @page margin:0 removes
+     browser headers/footers; all content spacing comes from this padding.
+     Note: padding-top only applies to the very start of the content flow,
+     not per page. Per-page top spacing is achieved by margin-top on each
+     .print-annexure-group which triggers page breaks naturally. */
+  .print-full {
+    margin: 0 !important;
+    padding: 15mm 18mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Catch any remaining wrapper divs with inline background styles,
+     and remove width constraints so the certificate fills the page */
+  body > div,
+  body > div > div,
+  body > div > div > div,
+  body > div > div > div > div,
+  body > div > div > div > main,
+  body > div > div > main > div {
+    background: transparent !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   /* Avoid page breaks inside tables and signature blocks */
@@ -108,9 +151,42 @@ body {
     page-break-inside: avoid;
   }
 
-  /* Remove shadows and borders from containers */
+  /* Remove shadows, borders, radius, and extra padding from certificate container */
   .print-full > div {
     box-shadow: none !important;
     border-radius: 0 !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  /* 8 blank lines of space before the certificate heading in print */
+  .print-top-spacer {
+    height: 8em !important;
+  }
+
+  /* ANNEXURE-I starts on a new page (page 2) */
+  .print-annexure-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Keep each annexure heading + table together; if the group doesn't fit
+     at the bottom of a page, move the entire group to the next page.
+     Every annexure gets 22mm top padding for consistent spacing whether
+     it's at the top of a new page or continuing on the same page. */
+  .print-annexure-group {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    padding-top: 22mm !important;
+    margin-top: 0 !important;
+  }
+
+  /* Signature block: add space above and keep it together */
+  .print-full .print-signature-block {
+    margin-top: 4em !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }

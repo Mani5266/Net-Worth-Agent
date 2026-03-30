@@ -2,10 +2,12 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import type { FormData, UploadedDoc, AuditEntry } from "@/types";
+import type { CurrencyInfo } from "@/constants";
+import { DEFAULT_CURRENCY } from "@/constants";
 import { useFormData as useFormDataHook } from "./useFormData";
 import { useExchangeRate } from "./useExchangeRate";
 import { useAuditTrail } from "./useAuditTrail";
-import { isForeignPurpose } from "@/lib/utils";
+import { isForeignPurpose, getCurrencyInfo } from "@/lib/utils";
 
 // ─── Context Shape ───────────────────────────────────────────────────────────
 
@@ -41,6 +43,12 @@ export interface FormDataContextValue {
 
   // Derived state
   isForeign: boolean;
+  /** INR per 1 unit of the selected foreign currency (e.g. 83.5 for USD, 106 for GBP) */
+  foreignRate: number | null;
+  /** Currency info for the selected country (code, symbol, label, locale) */
+  currencyInfo: CurrencyInfo;
+
+  // Backward compat alias (same as foreignRate)
   usdRate: number | null;
 
   // Audit trail
@@ -58,22 +66,34 @@ interface FormDataProviderProps {
 
 export function FormDataProvider({ children }: FormDataProviderProps) {
   const form = useFormDataHook();
-  const { usdRate: liveRate } = useExchangeRate();
   const { auditEntries, recordChanges, clearAudit, setBaseline } = useAuditTrail();
 
   const isForeign = isForeignPurpose(form.data.purpose);
+  const currencyInfo = isForeign ? getCurrencyInfo(form.data.country) : DEFAULT_CURRENCY;
+
+  // Fetch live exchange rate for the selected currency
+  const { rate: liveRate, currencyCode: rateCurrency, loading: rateLoading } = useExchangeRate(currencyInfo);
+
+  // Auto-populate the exchange rate field with the live rate when:
+  // - A foreign purpose is selected
+  // - The live rate has been successfully fetched (not loading)
+  // - The rate matches the currently selected currency
+  // - The exchange rate input is empty (user hasn't typed a manual override)
+  useEffect(() => {
+    if (isForeign && liveRate && !rateLoading && rateCurrency === currencyInfo.code && !form.data.exchangeRate) {
+      form.updateField("exchangeRate", String(liveRate));
+    }
+  }, [isForeign, liveRate, rateLoading, rateCurrency, currencyInfo.code, form.data.exchangeRate, form]);
+
+  // Manual override takes priority over live rate
   const overrideRate = form.data.exchangeRate ? parseFloat(form.data.exchangeRate) : null;
-  const usdRate = overrideRate && overrideRate > 0 ? overrideRate : liveRate;
+  const foreignRate = overrideRate && overrideRate > 0 ? overrideRate : liveRate;
 
   // Track the current wizard step for audit context
-  // The step is not directly accessible here, so we use a ref
-  // that gets updated via the data changes (step is implicit from field changes)
   const stepRef = useRef(0);
 
   // Detect which step we're on based on the most recently changed fields
-  // This is a heuristic — it's updated from the data itself
   useEffect(() => {
-    // Record audit changes whenever form data changes
     recordChanges(form.data, stepRef.current);
   }, [form.data, recordChanges]);
 
@@ -83,8 +103,6 @@ export function FormDataProvider({ children }: FormDataProviderProps) {
     () => (action) => {
       originalSetData((prev) => {
         const next = typeof action === "function" ? action(prev) : action;
-        // If this looks like a full data replacement (e.g. draft load),
-        // reset the audit baseline so we don't log the restore as changes
         const isFullReplace =
           prev.purpose !== next.purpose &&
           prev.fullName !== next.fullName &&
@@ -103,11 +121,13 @@ export function FormDataProvider({ children }: FormDataProviderProps) {
       ...form,
       setData: wrappedSetData,
       isForeign,
-      usdRate,
+      foreignRate,
+      currencyInfo,
+      usdRate: foreignRate, // backward compat alias
       auditEntries,
       clearAudit,
     }),
-    [form, wrappedSetData, isForeign, usdRate, auditEntries, clearAudit]
+    [form, wrappedSetData, isForeign, foreignRate, currencyInfo, auditEntries, clearAudit]
   );
 
   return (

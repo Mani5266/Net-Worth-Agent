@@ -4,6 +4,7 @@ import { forwardRef } from "react";
 import type { FormData } from "@/types";
 import {
   isForeignPurpose,
+  getCurrencyInfo,
   getPurposePhrase,
   getPossessivePronoun,
   formatCertDate,
@@ -14,57 +15,78 @@ import {
   buildSavingsRows,
   buildMovableRows,
   numberToWordsINR,
+  deriveAssessmentYear,
 } from "@/lib/utils";
 
 interface CertificateProps {
   data: FormData;
 }
 
-// Table header style
+// Table header style — clean black borders, no colored background (matches real CA certificates)
 const TH: React.CSSProperties = {
   padding: "7px 10px",
-  border: "1px solid #1a5c3e",
+  border: "1px solid #000",
   fontWeight: 700,
-  background: "#1a5c3e",
-  color: "#fff",
+  background: "#fff",
+  color: "#000",
   fontSize: 12,
   textAlign: "left",
 };
 
 // Table cell style
 function td(extra: React.CSSProperties = {}): React.CSSProperties {
-  return { padding: "6px 10px", border: "1px solid #b0b0b0", fontSize: 12, ...extra };
+  return { padding: "6px 10px", border: "1px solid #000", fontSize: 12, ...extra };
 }
 
 interface AnnexTableProps {
   rows: { label: string; inr: string }[];
   total: number;
+  /** Optional: foreign currency values per row (parallel to rows[]) */
+  foreignValues?: string[];
+  /** Optional: total in foreign currency */
+  foreignTotal?: number;
+  /** Optional: currency label, e.g. "UK (£)" */
+  currencyLabel?: string;
 }
 
-function AnnexTable({ rows, total }: AnnexTableProps) {
+function AnnexTable({ rows, total, foreignValues, foreignTotal, currencyLabel }: AnnexTableProps) {
+  const showForeign = !!(currencyLabel && foreignTotal !== undefined);
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
       <thead>
         <tr>
           <th style={TH}>Particulars</th>
           <th style={{ ...TH, width: 160, textAlign: "right" }}>Indian (Rs.)</th>
+          {showForeign && (
+            <th style={{ ...TH, width: 160, textAlign: "right" }}>{currencyLabel}</th>
+          )}
         </tr>
       </thead>
       <tbody>
         {rows.map((row, i) => {
           const label = row.label;
+          const fr = foreignValues?.[i];
+          const frVal = fr ? parseAmount(fr) : (row.inr ? parseAmount(row.inr) : 0);
           return (
-            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+            <tr key={i}>
               <td style={td()}>{label}</td>
               <td style={td({ textAlign: "right" })}>
                 {row.inr ? formatINR(parseAmount(row.inr)) : ""}
               </td>
+              {showForeign && (
+                <td style={td({ textAlign: "right" })}>
+                  {frVal ? formatForeign(frVal) : ""}
+                </td>
+              )}
             </tr>
           );
         })}
-        <tr style={{ background: "#f0fdf4" }}>
+        <tr style={{ background: "#fff" }}>
           <td style={td({ fontWeight: 700 })}><strong>Total</strong></td>
           <td style={td({ textAlign: "right", fontWeight: 700 })}><strong>{formatINR(total)}</strong></td>
+          {showForeign && (
+            <td style={td({ textAlign: "right", fontWeight: 700 })}><strong>{formatForeign(foreignTotal!)}</strong></td>
+          )}
         </tr>
       </tbody>
     </table>
@@ -81,8 +103,9 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
     const pronoun = getPossessivePronoun(data.salutation);
 
     // Build person-based income rows:
-    //   "Income of the Applicant – Mankala Akhil"
-    //   "Income of the Applicant's Father – Ramesh Kumar"
+    //   "Income of the Applicant – Mankala Akhil for the Assessment year in 2026-27"
+    //   "Income of the Applicant's Father – Ramesh Kumar for the Assessment year 2026-27"
+    const ay = data.assessmentYear || deriveAssessmentYear(data.certDate);
     const incRows = data.incomeTypes.length > 0
       ? data.incomeTypes.map((person, i) => {
           const personName = data.incomeLabels[person]?.trim()
@@ -90,7 +113,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
           const base = person === "Self"
             ? "Income of the Applicant"
             : `Income of the Applicant\u2019s ${person}`;
-          const label = `${base} \u2013 ${personName}`;
+          const label = `${base} \u2013 ${personName} for the Assessment year ${ay}`;
           return { label, inr: data.incomeRows[i]?.inr ?? "" };
         })
       : [{ label: "Income of the Applicant", inr: "" }];
@@ -145,10 +168,29 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
       "Income tax return copies of Applicant.",
       "Valuation/self-declaration documents of immovable properties.",
     ];
-    const docs = [...baseDocs, ...incomeFileNames, ...immovableFileNames, ...movableFileNames, ...savingsFileNames];
+    const otherDocs = (data.otherSupportingDocs ?? []).filter((d: string) => d.trim() !== "");
+    const docs = [...baseDocs, ...otherDocs, ...incomeFileNames, ...immovableFileNames, ...movableFileNames, ...savingsFileNames];
 
     const cl = data.country || "Foreign Currency";
+    const currInfo = getCurrencyInfo(data.country);
     const overrideRate = data.exchangeRate ? parseFloat(data.exchangeRate) : null;
+    const rate = (overrideRate && overrideRate > 0) ? overrideRate : currInfo.fallbackRate;
+
+    // Compute per-row foreign values for each annexure
+    // If manual FR values exist, use them; otherwise auto-calculate from INR / rate
+    const computeRowForeign = (rows: { inr: string }[], frArr: string[]) => {
+      const hasManual = frArr.some(v => v.trim() !== "");
+      return rows.map((row, i) => {
+        if (hasManual && frArr[i]?.trim()) return frArr[i];
+        const inrVal = row.inr ? parseAmount(row.inr) : 0;
+        return inrVal ? String(Math.round((inrVal / rate) * 100) / 100) : "";
+      });
+    };
+
+    const incFR = computeRowForeign(incRows, data.incomeFR ?? []);
+    const immFR = computeRowForeign(immRows, data.immovableFR ?? []);
+    const movFR = computeRowForeign(movRows, data.movableFR ?? []);
+    const savFR = computeRowForeign(savRows, data.savingsFR ?? []);
 
     // Helper to resolve custom label for display
     const getDisplayTypes = (types: string[], labels: Record<string, string>) => 
@@ -168,6 +210,9 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
           border: "1.5px solid #ccc",
         }}
       >
+        {/* ── Print top spacer (5 blank lines before heading) ── */}
+        <div className="print-top-spacer" style={{ height: 0 }} />
+
         {/* ── Header ── */}
         <p style={{ textAlign: "center", fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>
           TO WHOMSOEVER IT MAY CONCERN
@@ -210,7 +255,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
                   <td style={td({ textAlign: "center" })}><strong>{row.r}</strong></td>
                 </tr>
               ))}
-              <tr style={{ background: "#f0fdf4" }}>
+              <tr style={{ background: "#fff" }}>
                 <td style={td()} colSpan={2}><strong><u>Total</u></strong></td>
                 <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
                 <td style={td()} />
@@ -249,7 +294,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
                     <td style={td({ textAlign: "center" })}><strong>{row.r}</strong></td>
                   </tr>
                 ))}
-                <tr style={{ background: "#f0fdf4" }}>
+                <tr style={{ background: "#fff" }}>
                   <td style={td()} colSpan={2}><strong><u>Total</u></strong></td>
                   <td style={td({ textAlign: "right" })}><strong>{formatINR(totals.grandINR)}</strong></td>
                   <td style={td({ textAlign: "right" })}><strong>{formatForeign(totals.grandForeign)}</strong></td>
@@ -264,7 +309,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
             </table>
             {overrideRate && (
               <p style={{ fontSize: 10, color: "#666", textAlign: "right", margin: "0 0 20px" }}>
-                * Foreign currency converted at the rate of 1 USD = ₹{overrideRate.toFixed(2)} as on {dateStr}
+                * Foreign currency converted at the rate of 1 {currInfo.code} = ₹{overrideRate.toFixed(2)} as on {dateStr}
               </p>
             )}
           </div>
@@ -282,6 +327,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </ol>
 
         {/* ── ANNEXURE I ── */}
+        <div className="print-annexure-group print-annexure-break">
         <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
           <strong>ANNEXURE-I&nbsp;&nbsp;&nbsp;&nbsp;CURRENT INCOME</strong>
         </p>
@@ -290,9 +336,17 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
             <em>Income Declared For: {getDisplayTypes(data.incomeTypes, data.incomeLabels)}</em>
           </p>
         )}
-        <AnnexTable rows={incRows} total={totals.incomeINR} />
+        <AnnexTable
+          rows={incRows}
+          total={totals.incomeINR}
+          foreignValues={isF ? incFR : undefined}
+          foreignTotal={isF ? totals.incomeForeign : undefined}
+          currencyLabel={isF ? cl : undefined}
+        />
+        </div>
 
         {/* ── ANNEXURE II ── */}
+        <div className="print-annexure-group">
         <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
           <strong>ANNEXURE – II&nbsp;&nbsp;&nbsp;&nbsp;IMMOVABLE ASSETS</strong>
         </p>
@@ -304,9 +358,14 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         <AnnexTable
           rows={immRows}
           total={totals.immovableINR}
+          foreignValues={isF ? immFR : undefined}
+          foreignTotal={isF ? totals.immovableForeign : undefined}
+          currencyLabel={isF ? cl : undefined}
         />
+        </div>
 
         {/* ── ANNEXURE III ── */}
+        <div className="print-annexure-group">
         <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
           <strong>ANNEXURE – III&nbsp;&nbsp;&nbsp;&nbsp;MOVABLE PROPERTIES</strong>
         </p>
@@ -318,9 +377,14 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         <AnnexTable
           rows={movRows}
           total={totals.movableINR}
+          foreignValues={isF ? movFR : undefined}
+          foreignTotal={isF ? totals.movableForeign : undefined}
+          currencyLabel={isF ? cl : undefined}
         />
+        </div>
 
         {/* ── ANNEXURE IV ── */}
+        <div className="print-annexure-group">
         <p style={{ fontWeight: 700, margin: "0 0 6px" }}>
           <strong>ANNEXURE – IV&nbsp;&nbsp;&nbsp;&nbsp;CURRENT SAVINGS</strong>
         </p>
@@ -329,10 +393,17 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
             <em>Savings Declared For: {getDisplayTypes(data.savingsTypes, data.savingsLabels)}</em>
           </p>
         )}
-        <AnnexTable rows={savRows} total={totals.savingsINR} />
+        <AnnexTable
+          rows={savRows}
+          total={totals.savingsINR}
+          foreignValues={isF ? savFR : undefined}
+          foreignTotal={isF ? totals.savingsForeign : undefined}
+          currencyLabel={isF ? cl : undefined}
+        />
+        </div>
 
         {/* ── Signature Block ── */}
-        <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 36 }}>
+        <div className="print-signature-block" style={{ display: "flex", justifyContent: "flex-start", marginTop: 36 }}>
           <div>
             <p style={{ margin: "0 0 2px" }}><strong>For {data.firmName || "[Firm Name]"},</strong></p>
             <p style={{ margin: "0 0 2px" }}>{data.firmType || "Chartered Accountants"},</p>
