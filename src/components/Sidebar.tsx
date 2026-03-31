@@ -6,12 +6,10 @@ import { Button } from "@/components/ui";
 import { Modal } from "@/components/ui/Modal";
 import { ClientDate } from "@/components/ui/ClientDate";
 import type { CertificateRecord } from "@/types";
-import type { Session } from "@supabase/supabase-js";
 import {
   Plus,
   Pencil,
   Trash2,
-  LogOut,
   Menu,
   X,
   History,
@@ -20,26 +18,22 @@ import {
 } from "lucide-react";
 
 interface SidebarProps {
-  session: Session;
   history: CertificateRecord[];
   certificateId: string | null;
   onNewCertificate: () => void;
   onSwitchCertificate: (id: string) => Promise<void>;
   onRename: (id: string, newName: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onSignOut: () => void;
   loading: boolean;
 }
 
 export function Sidebar({
-  session,
   history,
   certificateId,
   onNewCertificate,
   onSwitchCertificate,
   onRename,
   onDelete,
-  onSignOut,
   loading,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -219,29 +213,6 @@ export function Sidebar({
               </div>
             ))
           )}
-        </div>
-      </div>
-
-      {/* User Footer */}
-      <div className="mt-8 pt-6 border-t border-slate-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-navy-100 flex items-center justify-center text-navy-700 font-bold text-xs shrink-0">
-              {(session.user?.email?.[0] ?? "?").toUpperCase()}
-            </div>
-            <p className="text-[11px] font-semibold text-slate-600 truncate">
-              {session.user?.email}
-            </p>
-          </div>
-          <button
-            onClick={onSignOut}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-500
-              hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            aria-label="Sign out"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign Out
-          </button>
         </div>
       </div>
 

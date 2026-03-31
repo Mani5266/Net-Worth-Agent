@@ -54,7 +54,7 @@ export function useGoldPrice(): GoldPriceState & { refresh: () => void } {
         price24k: json.price24kPerGram ?? null,
         price22k: json.price22kPerGram ?? null,
         source: json.source ?? null,
-        updatedAt: json.updatedAt ?? null,
+        updatedAt: json.lastUpdated ?? null,
         loading: false,
         error: null,
       });

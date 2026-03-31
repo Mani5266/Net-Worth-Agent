@@ -1,6 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { FormData, AnnexureRow, UploadedDoc } from "@/types";
 import { uploadDocument } from "@/lib/db";
+
+const FORM_STORAGE_KEY = "networth_form_data";
 
 const INITIAL_INCOME_ROWS: AnnexureRow[] = [];
 
@@ -44,6 +46,7 @@ export const INITIAL_STATE: FormData = {
   movableFR: [],
   goldGrams: "",
   goldKarat: "22K",
+  goldPriceOverride: "",
   // Step 6
   savingsTypes: [],
   savingsLabels: {},
@@ -55,17 +58,92 @@ export const INITIAL_STATE: FormData = {
   supportingDocs: [],
   otherSupportingDocs: [],
   // Step 7 — Signatory Details
-  firmName: "B A S T & ASSOCIATES",
-  firmType: "Chartered Accountants",
-  firmFRN: "021029S",
-  signatoryName: "CA Abhishek Boddu",
-  signatoryTitle: "Partner",
-  membershipNo: "242868",
-  signPlace: "Hyderabad",
+  firmName: "",
+  firmType: "",
+  firmFRN: "",
+  signatoryName: "",
+  signatoryTitle: "",
+  membershipNo: "",
+  signPlace: "",
 };
+
+// ─── Per-step field keys for "Reset This Step" ──────────────────────────────
+
+/** Fields that belong to each wizard step (by step index) */
+export const STEP_FIELDS: Record<number, (keyof FormData)[]> = {
+  0: ["purpose", "country", "certDate", "exchangeRate"],
+  1: ["salutation", "fullName", "passportNumber", "udin"],
+  2: ["assessmentYear", "incomeTypes", "incomeLabels", "incomeRows", "incomeFR", "incomeDocs"],
+  3: ["immovableTypes", "immovableLabels", "immovableProperties", "immovableRows", "immovableFR", "immovableDocs", "propertyAddress"],
+  4: ["movableTypes", "movableLabels", "movableAssets", "movableRows", "movableFR", "movableDocs", "goldGrams", "goldKarat", "goldPriceOverride"],
+  5: ["savingsTypes", "savingsLabels", "savingsEntries", "savingsRows", "savingsFR", "savingsDocs", "bankDetails", "policies", "supportingDocs", "otherSupportingDocs"],
+  6: ["firmName", "firmType", "firmFRN", "signatoryName", "signatoryTitle", "membershipNo", "signPlace"],
+};
+
+/** Build a partial FormData containing only the initial/default values for a given step */
+export function getStepDefaults(stepIndex: number): Partial<FormData> {
+  const fields = STEP_FIELDS[stepIndex];
+  if (!fields) return {};
+  const defaults: Partial<FormData> = {};
+  for (const key of fields) {
+    (defaults as Record<string, unknown>)[key] = INITIAL_STATE[key];
+  }
+  return defaults;
+}
+
+// ─── localStorage helpers ───────────────────────────────────────────────────
+
+function loadFormFromStorage(): FormData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(FORM_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Basic sanity check — must have at least the purpose field key
+    if (typeof parsed === "object" && parsed !== null && "purpose" in parsed) {
+      return { ...INITIAL_STATE, ...parsed } as FormData;
+    }
+  } catch {
+    // Corrupted data — ignore
+  }
+  return null;
+}
+
+function saveFormToStorage(data: FormData): void {
+  try {
+    localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // Storage full or unavailable — ignore
+  }
+}
 
 export function useFormData() {
   const [data, setData] = useState<FormData>(INITIAL_STATE);
+
+  // Track whether this is the initial mount
+  const isFirstRender = useRef(true);
+
+  // Restore from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    const saved = loadFormFromStorage();
+    if (saved) {
+      setData(saved);
+    }
+    // Mark first render done after restore (so subsequent changes get saved)
+    isFirstRender.current = false;
+  }, []);
+
+  // Auto-save form data to localStorage whenever it changes
+  useEffect(() => {
+    if (isFirstRender.current) return;
+    saveFormToStorage(data);
+  }, [data]);
+
+  // Reset only the fields belonging to a specific step
+  const resetStep = useCallback((stepIndex: number) => {
+    const defaults = getStepDefaults(stepIndex);
+    setData((prev) => ({ ...prev, ...defaults }));
+  }, []);
 
   // Generic field update
   const updateField = useCallback(<K extends keyof FormData>(
@@ -208,6 +286,7 @@ export function useFormData() {
     updateLabel,
     updateAnnexureRow,
     updateForeignRow,
+    resetStep,
     addIncomeDocs,
     removeIncomeDoc,
     addImmovableDocs,

@@ -9,9 +9,10 @@ interface WizardNavProps {
   validationError: string | null;
   onBack: () => void;
   onNext: () => void;
+  onResetStep?: () => void;
 }
 
-export function WizardNav({ step, saving, validationError, onBack, onNext }: WizardNavProps) {
+export function WizardNav({ step, saving, validationError, onBack, onNext, onResetStep }: WizardNavProps) {
   return (
     <div className="mt-8 no-print border-t border-slate-100 pt-6">
       {validationError && (
@@ -19,7 +20,7 @@ export function WizardNav({ step, saving, validationError, onBack, onNext }: Wiz
           <span>Warning:</span> {validationError}
         </div>
       )}
-      <div className="flex justify-between">
+      <div className="flex justify-between items-center">
         <Button
           variant="secondary"
           size="md"
@@ -28,6 +29,16 @@ export function WizardNav({ step, saving, validationError, onBack, onNext }: Wiz
         >
           Back
         </Button>
+
+        {step < STEPS.length - 1 && onResetStep && (
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={onResetStep}
+          >
+            Clear This Step
+          </Button>
+        )}
 
         {step < STEPS.length - 1 && (
           <Button

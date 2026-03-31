@@ -190,6 +190,7 @@ export const FormDataSchema = z.object({
   movableDocs: DocsMapSchema,
   goldGrams: z.string(),
   goldKarat: z.enum(["22K", "24K"]).default("22K"),
+  goldPriceOverride: z.string().default(""),
 
   // Step 6 – Annexure IV: Current Savings
   savingsTypes: z.array(z.string()),

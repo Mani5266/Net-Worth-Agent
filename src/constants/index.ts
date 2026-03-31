@@ -184,26 +184,28 @@ export const STEPS: StepDefinition[] = [
 ];
 
 // ─── CA Firm Details ──────────────────────────────────────────────────────────
+// Empty defaults — the user must fill in their own firm details.
 
 export const CA_FIRM = {
-  name: "B A S T & ASSOCIATES",
-  type: "Chartered Accountants",
-  frn: "021029S",
-  partnerName: "ABHISHEK BODDU",
-  partnerTitle: "Partner",
-  membershipNo: "242868",
-  place: "Hyderabad",
+  name: "",
+  type: "",
+  frn: "",
+  partnerName: "",
+  partnerTitle: "",
+  membershipNo: "",
+  place: "",
 } as const;
 
 // ─── Gold Reference Prices ────────────────────────────────────────────────────
-// Approximate Indian gold prices per gram (IBJA rates). Update periodically.
+// Fallback IBJA gold prices per gram in INR (without GST/making charges).
+// Used only when live scraping from ibjarates.com fails. Update periodically.
 
 export const GOLD_REFERENCE_PRICES = {
-  price24kPerGram: 7800,
-  price22kPerGram: 7150,
-  price18kPerGram: 5850,
-  lastUpdated: "2025-03-15",
-  source: "India Bullion and Jewellers Association (IBJA) - Approximate",
+  price24kPerGram: 14673,
+  price22kPerGram: 13441,
+  price18kPerGram: 11005,
+  lastUpdated: "2026-03-30",
+  source: "IBJA (India Bullion and Jewellers Association) — Approximate",
 } as const;
 
 // ─── Currency Mapping ─────────────────────────────────────────────────────────

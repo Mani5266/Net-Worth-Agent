@@ -281,9 +281,10 @@ export function buildMovableRows(d: FormData): AnnexureRow[] {
     let label = d.movableLabels?.[type]?.trim() || "Movable Asset";
     if (type === "Gold & Jewellery") {
       const grams = d.goldGrams || "___";
-      label = `Gold ornaments weighing ${grams} gms (In the Name of the Applicant)`;
+      const karat = d.goldKarat || "22K";
+      label = `Gold and Jewellery ornaments weighing ${grams} gms (${karat}) (In the Name of the Applicant)`;
       const sub = d.movableLabels?.["Gold & Jewellery"]?.trim();
-      if (sub) label += ` — ${sub}`;
+      if (sub) label += ` \u2014 ${sub}`;
     }
     rows.push({ label, inr: "" });
   });
@@ -491,7 +492,7 @@ export function buildCertificateText(d: FormData): string {
   } else {
     // Legacy: old category-based model
     d.movableRows.forEach((row, i) => {
-      const label = (i === 0 && d.goldGrams) ? `Gold ornaments weighing ${d.goldGrams} gms (In the Name of the Applicant)` : row.label;
+      const label = (i === 0 && d.goldGrams) ? `Gold and Jewellery ornaments weighing ${d.goldGrams} gms (${d.goldKarat || "22K"}) (In the Name of the Applicant)` : row.label;
       text += `${label.padEnd(52)} | ${row.inr ? formatINR(parseAmount(row.inr)) : ""}\n`;
     });
   }

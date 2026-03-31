@@ -22,9 +22,22 @@ function assetRowLabel(
   asset: MovableAsset,
   personName: string,
   applicantName: string,
+  goldGrams?: string,
+  goldKarat?: string,
 ): string {
-  const desc = asset.description.trim();
-  const prefix = desc || "Movable Asset";
+  const isGold = asset.assetType === "Gold & Jewellery";
+
+  let prefix: string;
+  if (isGold) {
+    // Gold rows: "Gold and Jewellery ornaments weighing Xg (22K/24K)"
+    const grams = goldGrams?.trim() || "___";
+    const karat = goldKarat || "22K";
+    prefix = `Gold and Jewellery ornaments weighing ${grams} gms (${karat})`;
+  } else {
+    // Other asset types: use description only
+    const desc = asset.description.trim();
+    prefix = desc || "Movable Asset";
+  }
 
   if (person === "Self") {
     const name = personName.trim() || applicantName || "[Applicant]";
@@ -53,6 +66,8 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     data,
     isForeign,
     foreignRate,
+    liveExchangeRate,
+    exchangeRateLoading,
     currencyInfo,
     toggleArrayItem,
     updateField,
@@ -112,6 +127,12 @@ export function StepMovable({ certificateId }: StepMovableProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.movableLabels]);
 
+  // ── Rebuild row labels when gold weight or karat changes ───────────────
+  useEffect(() => {
+    rebuildRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.goldGrams, data.goldKarat]);
+
   // ── Rebuild movableRows + movableFR from structured assets ──────────────
   const rebuildRows = () => {
     const rows: { label: string; inr: string }[] = [];
@@ -122,7 +143,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
       const assets = data.movableAssets[person] ?? [];
       const personName = data.movableLabels[person] ?? "";
       for (const asset of assets) {
-        const label = assetRowLabel(person, asset, personName, data.fullName);
+        const label = assetRowLabel(person, asset, personName, data.fullName, data.goldGrams, data.goldKarat);
         const existingRow = data.movableRows[flatIdx];
         rows.push({ label, inr: existingRow?.inr ?? "" });
         frArr.push(data.movableFR[flatIdx] ?? "");
@@ -144,7 +165,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
       [person]: [...current, newAsset],
     });
     // Add a new row + FR entry
-    const label = assetRowLabel(person, newAsset, data.movableLabels[person] ?? "", data.fullName);
+    const label = assetRowLabel(person, newAsset, data.movableLabels[person] ?? "", data.fullName, data.goldGrams, data.goldKarat);
     updateField("movableRows", [...data.movableRows, { label, inr: "" }]);
     updateField("movableFR", [...data.movableFR, ""]);
   };
@@ -197,7 +218,7 @@ export function StepMovable({ certificateId }: StepMovableProps) {
       const assets = assetsMap[person] ?? [];
       const personName = data.movableLabels[person] ?? "";
       for (const asset of assets) {
-        const label = assetRowLabel(person, asset, personName, data.fullName);
+        const label = assetRowLabel(person, asset, personName, data.fullName, data.goldGrams, data.goldKarat);
         const existingRow = data.movableRows[flatIdx];
         rows.push({ label, inr: existingRow?.inr ?? "" });
         frArr.push(data.movableFR[flatIdx] ?? "");
@@ -240,9 +261,13 @@ export function StepMovable({ certificateId }: StepMovableProps) {
   // ── Gold auto-calculation ────────────────────────────────────────────────
   const goldGrams = parseFloat(data.goldGrams) || 0;
   const goldKarat = data.goldKarat || "22K";
-  const goldPricePerGram = goldKarat === "24K"
+  const manualPricePerGram = parseFloat(data.goldPriceOverride) || 0;
+  const livePricePerGram = goldKarat === "24K"
     ? (goldPrice.price24k ?? 0)
     : (goldPrice.price22k ?? 0);
+  // Manual override takes priority over live rate
+  const goldPricePerGram = manualPricePerGram > 0 ? manualPricePerGram : livePricePerGram;
+  const usingOverride = manualPricePerGram > 0;
   const goldAutoAmount = useMemo(
     () => goldGrams > 0 && goldPricePerGram > 0
       ? Math.round(goldGrams * goldPricePerGram)
@@ -477,19 +502,42 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                           </div>
                         </div>
 
+                        {/* Warning + manual price override */}
+                        <div className="mt-2 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                          <p className="text-[11px] text-orange-700 font-medium mb-1.5">
+                            If the live gold rate is incorrect, enter the price per gram manually below. This will override the auto-fetched rate.
+                          </p>
+                          <div className="max-w-xs">
+                            <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                              Price per gram (Rs.) — leave empty to use live rate
+                            </label>
+                            <input
+                              type="number"
+                              value={data.goldPriceOverride}
+                              onChange={(e) => updateField("goldPriceOverride", e.target.value)}
+                              placeholder={livePricePerGram > 0 ? `Live: Rs.${livePricePerGram.toLocaleString("en-IN")}` : "e.g. 7800"}
+                              className="px-2.5 py-1.5 rounded-lg border border-orange-300 text-xs w-full
+                                focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500
+                                transition-colors bg-white placeholder:text-slate-400"
+                            />
+                          </div>
+                        </div>
+
                         {/* Auto-calculation result */}
                         {goldAutoAmount > 0 && (
                           <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800">
                             <p className="font-semibold">
-                              Auto-calculated: {formatINR(goldAutoAmount)} ({goldKarat} @ Rs.{goldPricePerGram.toLocaleString("en-IN")}/g)
+                              Auto-calculated: {formatINR(goldAutoAmount)} ({goldKarat} @ Rs.{goldPricePerGram.toLocaleString("en-IN")}/g{usingOverride ? " — manual override" : ""})
                             </p>
-                            <p className="text-[10px] text-amber-600 mt-0.5">
-                              {goldKarat === "22K"
-                                ? `24K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price24k ?? 0)))}`
-                                : `22K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price22k ?? 0)))}`}
-                              {goldPrice.source && ` \u00B7 ${goldPrice.source}`}
-                              {goldPrice.updatedAt && ` \u00B7 Updated: ${goldPrice.updatedAt}`}
-                            </p>
+                            {!usingOverride && (
+                              <p className="text-[10px] text-amber-600 mt-0.5">
+                                {goldKarat === "22K"
+                                  ? `24K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price24k ?? 0)))}`
+                                  : `22K estimate: ${formatINR(Math.round(goldGrams * (goldPrice.price22k ?? 0)))}`}
+                                {goldPrice.source && ` \u00B7 ${goldPrice.source}`}
+                                {goldPrice.updatedAt && ` \u00B7 Updated: ${goldPrice.updatedAt}`}
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -551,8 +599,12 @@ export function StepMovable({ certificateId }: StepMovableProps) {
                 const personName = data.movableLabels[person] ?? "";
                 const typeName = displayAssetType(asset);
                 const desc = asset.description.trim();
-                const prefix = desc ? `${typeName} \u2013 ${desc}` : typeName;
                 const isGoldRow = asset.assetType === "Gold & Jewellery";
+                // Gold: "Gold and Jewellery ornaments weighing Xg (karat)"
+                // Others: description only (no "Type – Description" prefix)
+                const prefix = isGoldRow
+                  ? `Gold and Jewellery ornaments weighing ${goldGrams > 0 ? goldGrams : "___"} gms (${goldKarat})`
+                  : (desc || typeName);
 
                 return (
                   <div
@@ -651,13 +703,32 @@ export function StepMovable({ certificateId }: StepMovableProps) {
         {/* Exchange rate override */}
         {isForeign && (
           <div className="mt-1">
-            <Input
-              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
-              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
-              value={data.exchangeRate}
-              onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
-            />
+            <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+              <p className="text-[11px] text-orange-700 font-medium mb-1">
+                {exchangeRateLoading
+                  ? "Fetching live exchange rate..."
+                  : liveExchangeRate
+                    ? `Live rate: 1 ${currencyInfo.code} = Rs.${liveExchangeRate.toLocaleString("en-IN")} INR`
+                    : `Could not fetch live rate. Fallback: 1 ${currencyInfo.code} = Rs.${currencyInfo.fallbackRate} INR`}
+              </p>
+              <p className="text-[10px] text-orange-600 mb-1.5">
+                If the live rate is incorrect, enter the exchange rate manually below. This will override the auto-fetched rate.
+              </p>
+              <input
+                type="number"
+                value={data.exchangeRate}
+                onChange={(e) => updateField("exchangeRate", e.target.value)}
+                placeholder={`Leave empty to use ${liveExchangeRate ? "live" : "fallback"} rate (${liveExchangeRate ?? currencyInfo.fallbackRate})`}
+                className="px-2.5 py-1.5 rounded-lg border border-orange-300 text-xs w-full max-w-xs
+                  focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500
+                  transition-colors bg-white placeholder:text-slate-400"
+              />
+              {data.exchangeRate && (
+                <p className="text-[10px] text-orange-800 font-semibold mt-1">
+                  Using manual override: 1 {currencyInfo.code} = Rs.{data.exchangeRate} INR
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>

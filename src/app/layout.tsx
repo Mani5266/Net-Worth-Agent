@@ -12,18 +12,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Net Worth Certificate Portal — B A S T & Associates",
+  title: "Net Worth Certificate Portal",
   description:
-    "Secure Net Worth Certificate generation portal for B A S T & Associates, Chartered Accountants (FRN 021029S). Prepare, review, and issue professional net worth certificates for Indian applicants.",
+    "Net Worth Certificate generation portal for Chartered Accountants. Prepare, review, and issue professional net worth certificates for Indian applicants.",
   keywords: [
     "net worth certificate",
     "chartered accountant",
-    "BAST Associates",
     "financial certificate",
     "CA certificate",
     "India",
   ],
-  authors: [{ name: "B A S T & Associates" }],
   robots: "noindex, nofollow", // Private portal — not for search engines
 };
 

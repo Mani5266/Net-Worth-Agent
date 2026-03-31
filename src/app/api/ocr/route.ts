@@ -5,8 +5,6 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
-import { requireAuth } from "@/lib/auth-guard";
-import { logAction } from "@/lib/audit";
 import { OCRRequestSchema } from "@/lib/schemas";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -55,10 +53,6 @@ Rules:
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function isValidDocumentType(type: unknown): type is "passport" | "aadhaar" {
-  return type === "passport" || type === "aadhaar";
-}
-
 function extractMimeType(base64: string): { mimeType: string; data: string } {
   // base64 may come as "data:image/jpeg;base64,..." or raw base64
   const match = base64.match(/^data:([^;]+);base64,(.+)$/);
@@ -77,12 +71,8 @@ function validatePassport(passportNumber: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
-    // 0. Authentication check
-    const authResult = await requireAuth(req);
-    if ("error" in authResult) return authResult.error;
-
     // 1. Rate limiting
-    const identifier = getClientIdentifier(req, authResult.userId);
+    const identifier = getClientIdentifier(req);
     const rateResult = await ocrRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -120,7 +110,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Validate MIME type
+    // 5. Validate MIME type
     const allowedMimes = [
       "image/jpeg",
       "image/jpg",
@@ -138,7 +128,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. Get API key
+    // 6. Get API key
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.error("OCR route: GEMINI_API_KEY not configured");
@@ -148,7 +138,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 8. Call Gemini Vision with model fallback
+    // 7. Call Gemini Vision with model fallback
     const prompt = DOCUMENT_PROMPTS[documentType];
     let lastError = "";
 
@@ -208,15 +198,6 @@ export async function POST(req: NextRequest) {
         if (documentType === "passport") {
           const passportNumber = typeof extracted.passportNumber === "string" ? extracted.passportNumber.toUpperCase().trim() : "";
 
-          // Audit: OCR processed (no PII in metadata — only doc type + model)
-          logAction({
-            userId: authResult.userId,
-            action: "ocr_processed",
-            documentType: "passport",
-            request: req,
-            metadata: { modelUsed: model, mimeType },
-          });
-
           return NextResponse.json({
             success: true,
             fullName: typeof extracted.fullName === "string" ? extracted.fullName.trim() : "",
@@ -226,15 +207,6 @@ export async function POST(req: NextRequest) {
         }
 
         if (documentType === "aadhaar") {
-          // Audit: OCR processed (no PII in metadata — only doc type + model)
-          logAction({
-            userId: authResult.userId,
-            action: "ocr_processed",
-            documentType: "aadhaar",
-            request: req,
-            metadata: { modelUsed: model, mimeType },
-          });
-
           return NextResponse.json({
             success: true,
             name: typeof extracted.name === "string" ? extracted.name.trim() : "",

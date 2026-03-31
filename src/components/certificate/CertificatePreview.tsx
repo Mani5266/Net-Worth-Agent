@@ -193,8 +193,8 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
     const savFR = computeRowForeign(savRows, data.savingsFR ?? []);
 
     // Helper to resolve custom label for display
-    const getDisplayTypes = (types: string[], labels: Record<string, string>) => 
-      types.map(t => labels[t]?.trim() ? `${t} (${labels[t].trim()})` : t).join(", ");
+    const getDisplayTypes = (types: string[]) => 
+      types.join(", ");
 
     return (
       <div
@@ -225,7 +225,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         <p style={{ textAlign: "justify", marginBottom: 16 }}>
           I, <strong>{data.signatoryName || "[Signatory Name]"}</strong>, member of The Institute of Chartered Accountants of
           India, do hereby certify that I have reviewed the financial condition of the Applicant,{" "}
-          <strong style={{ textDecoration: "underline" }}>{name}</strong>, with the view to furnish
+          <strong>{name}</strong>, with the view to furnish
           {" "}{pronoun} net worth <em>{purposeTxt}</em>. The Below detail of the assets are obtained as on{" "}
           <strong>{dateStr}</strong>
         </p>
@@ -333,7 +333,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.incomeTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Income Declared For: {getDisplayTypes(data.incomeTypes, data.incomeLabels)}</em>
+            <em>Income Declared For: {getDisplayTypes(data.incomeTypes)}</em>
           </p>
         )}
         <AnnexTable
@@ -352,7 +352,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.immovableTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Properties Declared For: {getDisplayTypes(data.immovableTypes, data.immovableLabels)}</em>
+            <em>Properties Declared For: {getDisplayTypes(data.immovableTypes)}</em>
           </p>
         )}
         <AnnexTable
@@ -371,7 +371,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.movableTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Assets Declared For: {getDisplayTypes(data.movableTypes, data.movableLabels)}</em>
+            <em>Assets Declared For: {getDisplayTypes(data.movableTypes)}</em>
           </p>
         )}
         <AnnexTable
@@ -390,7 +390,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         </p>
         {data.savingsTypes.length > 0 && (
           <p style={{ fontSize: 12, color: "#374151", margin: "0 0 8px" }}>
-            <em>Savings Declared For: {getDisplayTypes(data.savingsTypes, data.savingsLabels)}</em>
+            <em>Savings Declared For: {getDisplayTypes(data.savingsTypes)}</em>
           </p>
         )}
         <AnnexTable

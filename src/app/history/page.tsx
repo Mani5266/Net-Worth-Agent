@@ -9,33 +9,14 @@ import { ClientDate } from "@/components/ui/ClientDate";
 import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import type { Session } from "@supabase/supabase-js";
 import { ArrowLeft, Play, Eye, Trash2 } from "lucide-react";
 
 export default function HistoryPage() {
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<Session | null>(null);
-  const [authChecking, setAuthChecking] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setAuthChecking(false);
-      if (!session) router.push("/");
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) router.push("/");
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
 
   const loadCertificates = useCallback(async () => {
     try {
@@ -50,10 +31,8 @@ export default function HistoryPage() {
   }, [toast]);
 
   useEffect(() => {
-    if (session) {
-      loadCertificates();
-    }
-  }, [session, loadCertificates]);
+    loadCertificates();
+  }, [loadCertificates]);
 
   const handleResume = async (id: string) => {
     try {
@@ -115,14 +94,10 @@ export default function HistoryPage() {
         </div>
 
         <div className="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
-          {authChecking || loading ? (
+          {loading ? (
             <div className="p-12 text-center">
               <div className="inline-block w-8 h-8 border-4 border-navy-700 border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-slate-500 animate-pulse">{authChecking ? "Checking authorization..." : "Loading certificates..."}</p>
-            </div>
-          ) : !session ? (
-            <div className="p-12 text-center text-slate-500">
-              Please log in to view your history. Redirecting...
+              <p className="text-slate-500 animate-pulse">Loading certificates...</p>
             </div>
           ) : certificates.length === 0 ? (
             <div className="p-12 text-center text-slate-500">

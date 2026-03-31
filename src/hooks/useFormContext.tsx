@@ -31,6 +31,9 @@ export interface FormDataContextValue {
     field: "incomeFR" | "immovableFR" | "movableFR" | "savingsFR"
   ) => (index: number, value: string) => void;
 
+  // Per-step reset
+  resetStep: (stepIndex: number) => void;
+
   // Document handlers
   addIncomeDocs: (type: string, files: File[], certificateId?: string) => void;
   removeIncomeDoc: (type: string, index: number) => void;
@@ -43,8 +46,12 @@ export interface FormDataContextValue {
 
   // Derived state
   isForeign: boolean;
-  /** INR per 1 unit of the selected foreign currency (e.g. 83.5 for USD, 106 for GBP) */
+  /** Effective rate used for conversion: manual override if set, otherwise live rate */
   foreignRate: number | null;
+  /** Live exchange rate fetched from API (before any manual override) */
+  liveExchangeRate: number | null;
+  /** Whether the live exchange rate is still loading */
+  exchangeRateLoading: boolean;
   /** Currency info for the selected country (code, symbol, label, locale) */
   currencyInfo: CurrencyInfo;
 
@@ -73,17 +80,6 @@ export function FormDataProvider({ children }: FormDataProviderProps) {
 
   // Fetch live exchange rate for the selected currency
   const { rate: liveRate, currencyCode: rateCurrency, loading: rateLoading } = useExchangeRate(currencyInfo);
-
-  // Auto-populate the exchange rate field with the live rate when:
-  // - A foreign purpose is selected
-  // - The live rate has been successfully fetched (not loading)
-  // - The rate matches the currently selected currency
-  // - The exchange rate input is empty (user hasn't typed a manual override)
-  useEffect(() => {
-    if (isForeign && liveRate && !rateLoading && rateCurrency === currencyInfo.code && !form.data.exchangeRate) {
-      form.updateField("exchangeRate", String(liveRate));
-    }
-  }, [isForeign, liveRate, rateLoading, rateCurrency, currencyInfo.code, form.data.exchangeRate, form]);
 
   // Manual override takes priority over live rate
   const overrideRate = form.data.exchangeRate ? parseFloat(form.data.exchangeRate) : null;
@@ -122,12 +118,14 @@ export function FormDataProvider({ children }: FormDataProviderProps) {
       setData: wrappedSetData,
       isForeign,
       foreignRate,
+      liveExchangeRate: liveRate,
+      exchangeRateLoading: rateLoading,
       currencyInfo,
       usdRate: foreignRate, // backward compat alias
       auditEntries,
       clearAudit,
     }),
-    [form, wrappedSetData, isForeign, foreignRate, currencyInfo, auditEntries, clearAudit]
+    [form, wrappedSetData, isForeign, foreignRate, liveRate, rateLoading, currencyInfo, auditEntries, clearAudit]
   );
 
   return (

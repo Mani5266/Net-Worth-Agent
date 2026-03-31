@@ -107,14 +107,11 @@ function createLimiter(prefix: string, config: LimiterConfig) {
 
 /**
  * Get the client identifier for rate limiting.
- * Prefers user-provided identifier (e.g., user ID from auth), falls back to IP.
+ * Uses IP address from request headers.
  */
 export function getClientIdentifier(
-  request: Request,
-  userId?: string | null
+  request: Request
 ): string {
-  if (userId) return `user:${userId}`;
-
   // Try standard forwarded headers, then fall back
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {

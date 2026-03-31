@@ -26,6 +26,8 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
     data,
     isForeign,
     foreignRate,
+    liveExchangeRate,
+    exchangeRateLoading,
     currencyInfo,
     toggleArrayItem,
     updateField,
@@ -281,13 +283,32 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
         {/* Exchange rate override */}
         {isForeign && (
           <div className="mt-1">
-            <Input
-              label={`Exchange Rate (1 ${currencyInfo.code} = ? INR) *`}
-              placeholder={`e.g. 1 ${currencyInfo.code} = ${foreignRate ?? currencyInfo.fallbackRate} INR`}
-              value={data.exchangeRate}
-              onChange={(e) => updateField("exchangeRate", e.target.value)}
-              hint={`Foreign currency column is auto-calculated by dividing INR total by this rate. Live rate is auto-filled.`}
-            />
+            <div className="p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+              <p className="text-[11px] text-orange-700 font-medium mb-1">
+                {exchangeRateLoading
+                  ? "Fetching live exchange rate..."
+                  : liveExchangeRate
+                    ? `Live rate: 1 ${currencyInfo.code} = Rs.${liveExchangeRate.toLocaleString("en-IN")} INR`
+                    : `Could not fetch live rate. Fallback: 1 ${currencyInfo.code} = Rs.${currencyInfo.fallbackRate} INR`}
+              </p>
+              <p className="text-[10px] text-orange-600 mb-1.5">
+                If the live rate is incorrect, enter the exchange rate manually below. This will override the auto-fetched rate.
+              </p>
+              <input
+                type="number"
+                value={data.exchangeRate}
+                onChange={(e) => updateField("exchangeRate", e.target.value)}
+                placeholder={`Leave empty to use ${liveExchangeRate ? "live" : "fallback"} rate (${liveExchangeRate ?? currencyInfo.fallbackRate})`}
+                className="px-2.5 py-1.5 rounded-lg border border-orange-300 text-xs w-full max-w-xs
+                  focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500
+                  transition-colors bg-white placeholder:text-slate-400"
+              />
+              {data.exchangeRate && (
+                <p className="text-[10px] text-orange-800 font-semibold mt-1">
+                  Using manual override: 1 {currencyInfo.code} = Rs.{data.exchangeRate} INR
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>

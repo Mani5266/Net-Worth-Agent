@@ -5,7 +5,6 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
-import { requireAuth } from "@/lib/auth-guard";
 import { EXCHANGE_RATE_FALLBACK_USD_INR, COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY } from "@/constants";
 
 // Module-level cache — reused across requests within the same server process
@@ -91,12 +90,8 @@ async function fetchRatesFromAPIs(): Promise<Record<string, number>> {
 
 export async function GET(req: NextRequest) {
   try {
-    // 0. Authentication check
-    const authResult = await requireAuth(req);
-    if ("error" in authResult) return authResult.error;
-
     // Rate limiting
-    const identifier = getClientIdentifier(req, authResult.userId);
+    const identifier = getClientIdentifier(req);
     const rateResult = await exchangeRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);

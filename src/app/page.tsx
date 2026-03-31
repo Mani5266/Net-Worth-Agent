@@ -28,9 +28,6 @@ import {
   deleteCertificate,
 } from "@/lib/db";
 import type { CertificateRecord } from "@/types";
-import { Auth_UI } from "@/components/auth/Auth";
-import { supabase } from "@/lib/supabase";
-import type { Session } from "@supabase/supabase-js";
 import { useToast } from "@/components/ui/Toast";
 import { Modal } from "@/components/ui/Modal";
 import { StepSkeleton } from "@/components/ui/Skeleton";
@@ -38,47 +35,36 @@ import { StepSkeleton } from "@/components/ui/Skeleton";
 // ─── Main Page (wraps inner content with FormDataProvider) ───────────────────
 
 export default function HomePage() {
-  const [session, setSession] = useState<Session | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s)).catch(() => setSession(null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => subscription.unsubscribe();
-  }, []);
-
-  if (!session) return <Auth_UI />;
-
   return (
     <FormDataProvider>
-      <WizardShell session={session} />
+      <WizardShell />
     </FormDataProvider>
   );
 }
 
 // ─── Wizard Shell (consumes FormDataContext) ─────────────────────────────────
 
-function WizardShell({ session }: { session: Session }) {
-  const { data, setData, updateField, auditEntries, clearAudit } = useFormContext();
+function WizardShell() {
+  const { data, setData, updateField, resetStep, auditEntries, clearAudit } = useFormContext();
   const { toast } = useToast();
 
-  // Initialize step from localStorage to survive browser refresh
-  const [step, setStep] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("networth_current_step");
-      if (saved !== null) {
-        const parsed = parseInt(saved, 10);
-        if (!isNaN(parsed) && parsed >= 0 && parsed < STEPS.length) {
-          return parsed;
-        }
-      }
-    }
-    return 0;
-  });
+  // Initialize step; restore from localStorage after mount to avoid hydration mismatch
+  const [step, setStep] = useState(0);
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const certRef = useRef<HTMLDivElement>(null);
 
-  // Persist step to localStorage whenever it changes
+  // Restore saved step from localStorage on mount, then persist on change
+  useEffect(() => {
+    const saved = localStorage.getItem("networth_current_step");
+    if (saved !== null) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 0 && parsed < STEPS.length) {
+        setStep(parsed);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("networth_current_step", String(step));
   }, [step]);
@@ -144,20 +130,10 @@ function WizardShell({ session }: { session: Session }) {
         }
       }
 
-      // 2. Refresh persistence — restore certificate data
+      // 2. Restore certificate ID for continued editing (form data is already in localStorage)
       const currentId = localStorage.getItem("networth_current_id");
       if (currentId) {
-        try {
-          setLoading(true);
-          const freshData = await getCertificate(currentId);
-          setData(freshData);
-          setCertificateId(currentId);
-          // Step is already restored by useState initializer above
-        } catch {
-          localStorage.removeItem("networth_current_id");
-        } finally {
-          setLoading(false);
-        }
+        setCertificateId(currentId);
       }
     };
 
@@ -165,17 +141,6 @@ function WizardShell({ session }: { session: Session }) {
   }, [setData]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
-
-  const handleSignOut = useCallback(async () => {
-    // Clear all sensitive data from localStorage
-    localStorage.removeItem("networth_current_id");
-    localStorage.removeItem("networth_current_step");
-    localStorage.removeItem("networth_resume_data");
-    localStorage.removeItem("networth_resume_id");
-    localStorage.removeItem("networth_view_only");
-    updateCertificateId(null);
-    await supabase.auth.signOut();
-  }, [updateCertificateId]);
 
   const handleReset = useCallback(() => {
     setShowResetModal(true);
@@ -187,6 +152,8 @@ function WizardShell({ session }: { session: Session }) {
     updateCertificateId(null);
     clearAudit();
     setShowResetModal(false);
+    // Clear persisted form data
+    localStorage.removeItem("networth_form_data");
     toast("New certificate started", "success");
     window.scrollTo(0, 0);
   }, [setData, updateCertificateId, clearAudit, toast]);
@@ -362,14 +329,12 @@ function WizardShell({ session }: { session: Session }) {
     <div className="min-h-screen print-bg-none" style={{ backgroundColor: "#f5f7fb" }}>
       <div className="flex flex-col lg:flex-row min-h-screen">
         <Sidebar
-          session={session}
           history={history}
           certificateId={certificateId}
           onNewCertificate={handleReset}
           onSwitchCertificate={handleSwitchCertificate}
           onRename={handleRename}
           onDelete={handleDelete}
-          onSignOut={handleSignOut}
           loading={loading}
         />
 
@@ -409,6 +374,7 @@ function WizardShell({ session }: { session: Session }) {
               validationError={validationError}
               onBack={handleBack}
               onNext={handleNext}
+              onResetStep={() => resetStep(step)}
             />
           </div>
         </main>

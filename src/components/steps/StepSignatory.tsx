@@ -12,7 +12,7 @@ export function StepSignatory() {
         <div className="space-y-4">
           <Input
             label="Firm Name"
-            placeholder="e.g. B A S T & ASSOCIATES"
+            placeholder="e.g. Smith & Associates"
             value={data.firmName}
             onChange={(e) => updateField("firmName", e.target.value)}
           />
@@ -25,7 +25,7 @@ export function StepSignatory() {
             />
             <Input
               label="Firm Registration Number (FRN)"
-              placeholder="e.g. 021029S"
+              placeholder="e.g. 012345S"
               value={data.firmFRN}
               onChange={(e) => updateField("firmFRN", e.target.value)}
             />
@@ -37,8 +37,8 @@ export function StepSignatory() {
         <div className="space-y-4">
           <Input
             label="Signatory Name"
-            hint="This name appears in the certificate body and signature block (e.g. CA Abhishek Boddu)"
-            placeholder="e.g. CA Abhishek Boddu"
+            hint="This name appears in the certificate body and signature block (e.g. CA Ramesh Kumar)"
+            placeholder="e.g. CA Ramesh Kumar"
             value={data.signatoryName}
             onChange={(e) => updateField("signatoryName", e.target.value)}
           />
@@ -51,14 +51,14 @@ export function StepSignatory() {
             />
             <Input
               label="ICAI Membership Number"
-              placeholder="e.g. 242868"
+              placeholder="e.g. 123456"
               value={data.membershipNo}
               onChange={(e) => updateField("membershipNo", e.target.value)}
             />
           </div>
           <Input
             label="Place of Signing"
-            placeholder="e.g. Hyderabad"
+            placeholder="e.g. Mumbai"
             value={data.signPlace}
             onChange={(e) => updateField("signPlace", e.target.value)}
           />

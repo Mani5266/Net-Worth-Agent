@@ -1,19 +1,7 @@
 import { supabase } from "./supabase";
 import { FormDataSchema } from "./schemas";
-import { logAction } from "./audit";
 import { INITIAL_STATE } from "@/hooks/useFormData";
 import type { FormData, CertificateRecord, DocumentRecord } from "@/types";
-
-/**
- * Gets the authenticated user ID or throws an error.
- */
-async function getRequiredUserId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.id) {
-    throw new Error("Authentication required. Please sign in again.");
-  }
-  return user.id;
-}
 
 /**
  * Safely parses form_data from DB JSON with Zod validation.
@@ -32,8 +20,6 @@ function parseFormData(raw: unknown): FormData {
  * Upserts the client first, then creates the certificate record.
  */
 export async function saveCertificateDraft(formData: FormData): Promise<string> {
-  const userId = await getRequiredUserId();
-
   // 1. Upsert Client (based on Passport Number, stored in pan_number column)
   const { data: client, error: clientError } = await supabase
     .from("clients")
@@ -41,7 +27,6 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       full_name: formData.fullName,
       salutation: formData.salutation,
       pan_number: formData.passportNumber.toUpperCase(),
-      user_id: userId,
     }, { onConflict: 'pan_number' })
     .select()
     .single();
@@ -53,7 +38,6 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
     .from("certificates")
     .insert({
       client_id: client.id,
-      user_id: client.user_id, // Match client's user
       purpose: formData.purpose,
       country: formData.country,
       cert_date: formData.certDate,
@@ -67,24 +51,13 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
 
   if (certError) throw certError;
 
-  // Audit: certificate created
-  logAction({
-    userId,
-    action: "certificate_created",
-    documentType: "certificate",
-    documentId: cert.id,
-    metadata: { purpose: formData.purpose, country: formData.country },
-  });
-
   return cert.id;
 }
 
 /**
  * Updates an existing certificate draft.
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function updateCertificateDraft(id: string, formData: FormData): Promise<void> {
-  const userId = await getRequiredUserId();
   const { error } = await supabase
     .from("certificates")
     .update({
@@ -92,31 +65,19 @@ export async function updateCertificateDraft(id: string, formData: FormData): Pr
       nickname: formData.nickname,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id)
-    .eq("user_id", userId);
+    .eq("id", id);
 
   if (error) throw error;
-
-  // Audit: certificate updated
-  logAction({
-    userId,
-    action: "certificate_updated",
-    documentType: "certificate",
-    documentId: id,
-  });
 }
 
 /**
  * Fetches a certificate by ID.
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function getCertificate(id: string): Promise<FormData> {
-  const userId = await getRequiredUserId();
   const { data, error } = await supabase
     .from("certificates")
     .select("form_data")
     .eq("id", id)
-    .eq("user_id", userId)
     .single();
 
   if (error) throw error;
@@ -124,11 +85,9 @@ export async function getCertificate(id: string): Promise<FormData> {
 }
 
 /**
- * Fetches all certificates for the current user (history page).
- * Explicitly scoped by user_id as defense-in-depth (in addition to RLS).
+ * Fetches all certificates (history page).
  */
 export async function getAllCertificates(): Promise<CertificateRecord[]> {
-  const userId = await getRequiredUserId();
   const { data, error } = await supabase
     .from("certificates")
     .select(`
@@ -142,7 +101,6 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
         full_name
       )
     `)
-    .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -160,17 +118,12 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
 
 /**
  * Renames a certificate (updates both column and JSON).
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function renameCertificate(id: string, newName: string): Promise<void> {
-  const userId = await getRequiredUserId();
-
-  // We need to update both the top-level column and the JSON inside form_data
   const { data: cert, error: fetchError } = await supabase
     .from("certificates")
     .select("form_data")
     .eq("id", id)
-    .eq("user_id", userId)
     .single();
 
   if (fetchError) throw fetchError;
@@ -187,24 +140,13 @@ export async function renameCertificate(id: string, newName: string): Promise<vo
       form_data: updatedFormData,
       updated_at: new Date().toISOString()
     })
-    .eq("id", id)
-    .eq("user_id", userId);
+    .eq("id", id);
 
   if (updateError) throw updateError;
-
-  // Audit: certificate renamed
-  logAction({
-    userId,
-    action: "certificate_renamed",
-    documentType: "certificate",
-    documentId: id,
-    metadata: { newName },
-  });
 }
 
 /**
  * Uploads a document to Supabase Storage and records it in the DB.
- * File path is prefixed with userId/ to enforce storage RLS ownership.
  */
 export async function uploadDocument(
   certificateId: string,
@@ -212,9 +154,8 @@ export async function uploadDocument(
   category: string,
   file: File
 ): Promise<string> {
-  const userId = await getRequiredUserId();
   const fileName = `${Date.now()}-${file.name}`;
-  const filePath = `${userId}/${certificateId}/${annexureType}/${category}/${fileName}`;
+  const filePath = `${certificateId}/${annexureType}/${category}/${fileName}`;
 
   // 1. Upload to Storage
   const { error: uploadError } = await supabase.storage
@@ -223,7 +164,7 @@ export async function uploadDocument(
 
   if (uploadError) throw uploadError;
 
-  // 2. Get Signed URL (5 minutes — short-lived for security)
+  // 2. Get Signed URL (5 minutes)
   const { data: signedData, error: signedError } = await supabase.storage
     .from("networth-documents")
     .createSignedUrl(filePath, 300);
@@ -233,7 +174,6 @@ export async function uploadDocument(
   // 3. Save to DB
   const { error: dbError } = await supabase.from("documents").insert({
     certificate_id: certificateId,
-    user_id: userId,
     annexure_type: annexureType,
     category: category,
     file_url: filePath,
@@ -243,25 +183,13 @@ export async function uploadDocument(
 
   if (dbError) throw dbError;
 
-  // Audit: document uploaded
-  logAction({
-    userId,
-    action: "document_uploaded",
-    documentType: annexureType,
-    documentId: certificateId,
-    metadata: { category, fileName: file.name, fileType: file.type },
-  });
-
   return signedData.signedUrl;
 }
 
 /**
  * Deletes a document from storage and DB.
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function deleteDocument(documentId: string, filePath: string): Promise<void> {
-  const userId = await getRequiredUserId();
-
   // 1. Delete from Storage
   const { error: storageError } = await supabase.storage
     .from("networth-documents")
@@ -269,40 +197,27 @@ export async function deleteDocument(documentId: string, filePath: string): Prom
 
   if (storageError) throw storageError;
 
-  // 2. Delete from DB — scoped to current user
+  // 2. Delete from DB
   const { error: dbError } = await supabase
     .from("documents")
     .delete()
-    .eq("id", documentId)
-    .eq("user_id", userId);
+    .eq("id", documentId);
 
   if (dbError) throw dbError;
-
-  // Audit: document deleted
-  logAction({
-    userId,
-    action: "document_deleted",
-    documentType: "document",
-    documentId: documentId,
-    metadata: { filePath },
-  });
 }
 
 /**
  * Fetches all documents associated with a certificate.
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function getDocuments(certificateId: string): Promise<DocumentRecord[]> {
-  const userId = await getRequiredUserId();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
-    .eq("certificate_id", certificateId)
-    .eq("user_id", userId);
+    .eq("certificate_id", certificateId);
 
   if (error) throw error;
 
-  // Generate signed URLs for each (5 minutes — short-lived for security)
+  // Generate signed URLs for each (5 minutes)
   const docsWithUrls = await Promise.all(
     data.map(async (doc) => {
       const { data: signedUrlData } = await supabase.storage
@@ -327,25 +242,21 @@ export async function getDocuments(certificateId: string): Promise<DocumentRecor
     uploadedAt: doc.uploaded_at as string,
   }));
 }
+
 /**
  * Deletes a certificate and its associated documents from DB and Storage.
- * Scoped by user_id as defense-in-depth (in addition to RLS).
  */
 export async function deleteCertificate(id: string): Promise<void> {
-  const userId = await getRequiredUserId();
-
-  // 1. Get documents to delete from storage (scoped to current user)
+  // 1. Get documents to delete from storage
   const { data: docs } = await supabase
     .from("documents")
     .select("file_url")
-    .eq("certificate_id", id)
-    .eq("user_id", userId);
+    .eq("certificate_id", id);
     
   if (docs && docs.length > 0) {
     const paths = docs.map(d => d.file_url);
     const { error: storageErr } = await supabase.storage.from("networth-documents").remove(paths);
     if (storageErr) {
-      // Log but don't throw - we still want to delete the DB record
       console.error("Failed to delete storage files:", storageErr);
     }
   }
@@ -354,17 +265,7 @@ export async function deleteCertificate(id: string): Promise<void> {
   const { error } = await supabase
     .from("certificates")
     .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
+    .eq("id", id);
 
   if (error) throw error;
-
-  // Audit: certificate deleted (includes doc count for forensics)
-  logAction({
-    userId,
-    action: "certificate_deleted",
-    documentType: "certificate",
-    documentId: id,
-    metadata: { documentsRemoved: docs?.length ?? 0 },
-  });
 }
