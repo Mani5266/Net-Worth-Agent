@@ -1,8 +1,40 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
+/* ── Checkmark icon used in feature bullets ─────────────────── */
+function CheckIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#10b981"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+/* ── Feature bullet ─────────────────────────────────────────── */
+function Feature({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-3 text-[0.95rem] font-medium text-white/80">
+      <div className="w-[22px] h-[22px] rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
+        <CheckIcon />
+      </div>
+      {text}
+    </div>
+  );
+}
+
+/* ── Main page ──────────────────────────────────────────────── */
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -14,6 +46,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
 
+  /* redirect if already authenticated */
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -24,12 +57,14 @@ export default function LoginPage() {
     });
   }, [router]);
 
+  /* tab switch — clears messages */
   const switchTab = (tab: "login" | "signup") => {
     setMode(tab);
     setError("");
     setSuccess("");
   };
 
+  /* form submit */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -49,29 +84,32 @@ export default function LoginPage() {
           return;
         }
 
-        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+        });
         if (signUpError) {
           setError(signUpError.message);
           setLoading(false);
           return;
         }
-
         if (data.session) {
           router.replace("/");
           return;
         }
 
-        // Account created but needs email confirmation — show success, switch to login WITHOUT clearing
-        setSuccess("Account created! Please check your email to confirm, then login.");
-        setMode("login"); // Don't call switchTab — it clears success message
+        setSuccess(
+          "Account created! Please check your email to confirm, then login."
+        );
+        setMode("login");
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        const { error: signInError } =
+          await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
           setError(signInError.message);
           setLoading(false);
           return;
         }
-
         router.replace("/");
         return;
       }
@@ -83,201 +121,182 @@ export default function LoginPage() {
     setLoading(false);
   };
 
+  /* ── Loading gate ───────────────────────────────────────── */
   if (checking) {
     return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#ffffff",
-        color: "#94a3b8",
-        fontFamily: "Inter, system-ui, sans-serif",
-      }}>
+      <div className="min-h-screen flex items-center justify-center bg-white text-slate-400 font-sans">
         Loading...
       </div>
     );
   }
 
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", fontFamily: "Inter, system-ui, -apple-system, sans-serif" }}>
-      {/* Left Panel */}
-      <div style={{
-        width: "50%",
-        minHeight: "100vh",
-        background: "#0f172a",
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        padding: "2.5rem",
-        position: "relative",
-        overflow: "hidden",
-      }}>
-        {/* Decorative gradient */}
-        <div style={{
-          position: "absolute",
-          top: -80,
-          right: -80,
-          width: 350,
-          height: 350,
-          background: "radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)",
-          borderRadius: "50%",
-        }} />
-        <div style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          width: "100%",
-          height: 6,
-          background: "linear-gradient(90deg, #0f172a 0%, #1e293b 40%, #334155 70%, #0f172a 100%)",
-        }} />
+  /* ── Render ─────────────────────────────────────────────── */
+  const isLogin = mode === "login";
 
+  return (
+    <div className="min-h-screen flex font-sans">
+      {/* ── Left panel ──────────────────────────────────────── */}
+      <div className="w-1/2 min-h-screen bg-navy-900 text-white flex flex-col justify-between p-10 relative overflow-hidden">
+        {/* decorative gradient */}
+        <div className="absolute -top-20 -right-20 w-[350px] h-[350px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.15)_0%,transparent_70%)]" />
+        <div className="absolute top-0 right-0 w-full h-1.5 bg-[linear-gradient(90deg,#0f172a_0%,#1e293b_40%,#334155_70%,#0f172a_100%)]" />
+
+        {/* brand */}
         <div>
-          <div style={{ fontSize: "1.15rem", fontWeight: 800, letterSpacing: "-0.02em" }}>OnEasy</div>
-          <div style={{ width: "100%", height: 1, background: "rgba(255,255,255,0.08)", margin: "2rem 0" }} />
+          <div className="text-lg font-extrabold tracking-tight">OnEasy</div>
+          <div className="w-full h-px bg-white/[0.08] my-8" />
         </div>
 
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <h1 style={{ fontSize: "2.5rem", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: "1.25rem" }}>
+        {/* content */}
+        <div className="flex-1 flex flex-col justify-center">
+          <h1 className="text-[2.5rem] font-black tracking-tight leading-tight mb-5">
             Net Worth Certificate
           </h1>
-          <p style={{ fontSize: "1rem", color: "rgba(255,255,255,0.55)", lineHeight: 1.7, maxWidth: 420 }}>
-            Prepare, review, and issue professional net worth certificates for Indian applicants. Accurate, structured, and CA-ready.
+          <p className="text-base text-white/55 leading-relaxed max-w-[420px]">
+            Prepare, review, and issue professional net worth certificates for
+            Indian applicants. Accurate, structured, and CA-ready.
           </p>
-          <div style={{ marginTop: "3rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {["AI-Powered OCR & Data Extraction", "Multi-Annexure Certificate Builder", "Real-Time Gold & Exchange Rates"].map((text) => (
-              <div key={text} style={{ display: "flex", alignItems: "center", gap: "0.75rem", fontSize: "0.95rem", fontWeight: 500, color: "rgba(255,255,255,0.8)" }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: "50%", background: "rgba(16,185,129,0.15)",
-                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>
-                {text}
-              </div>
-            ))}
+          <div className="mt-12 flex flex-col gap-4">
+            <Feature text="AI-Powered OCR & Data Extraction" />
+            <Feature text="Multi-Annexure Certificate Builder" />
+            <Feature text="Real-Time Gold & Exchange Rates" />
           </div>
         </div>
 
-        <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.3)" }}>&copy; 2026 OnEasy. All rights reserved.</div>
+        <div className="text-xs text-white/30">
+          &copy; 2026 OnEasy. All rights reserved.
+        </div>
       </div>
 
-      {/* Right Panel */}
-      <div style={{
-        width: "50%",
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#ffffff",
-        padding: "2.5rem",
-      }}>
-        <div style={{ width: "100%", maxWidth: 420 }}>
-          <h2 style={{ fontSize: "1.6rem", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: "0.4rem" }}>
-            {mode === "login" ? "Sign in to your account" : "Create your account"}
+      {/* ── Right panel ─────────────────────────────────────── */}
+      <div className="w-1/2 min-h-screen flex items-center justify-center bg-white p-10">
+        <div className="w-full max-w-[420px]">
+          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
+            {isLogin ? "Sign in to your account" : "Create your account"}
           </h2>
-          <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginBottom: "2rem" }}>
-            {mode === "login" ? "Enter your credentials to access the dashboard." : "Enter your details to get started."}
+          <p className="text-sm text-slate-400 mb-8">
+            {isLogin
+              ? "Enter your credentials to access the dashboard."
+              : "Enter your details to get started."}
           </p>
 
-          {/* Tabs */}
-          <div style={{ display: "flex", marginBottom: "2rem", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+          {/* tabs */}
+          <div className="flex mb-8 border border-slate-200 rounded-[10px] overflow-hidden">
             <button
+              type="button"
               onClick={() => switchTab("login")}
-              style={{
-                flex: 1, padding: "0.75rem", border: "none",
-                background: mode === "login" ? "#0f172a" : "transparent",
-                color: mode === "login" ? "#ffffff" : "#94a3b8",
-                fontFamily: "inherit", fontSize: "0.9rem", fontWeight: 600,
-                cursor: "pointer", transition: "all 0.2s",
-              }}
-            >Login</button>
+              className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
+                isLogin
+                  ? "bg-slate-900 text-white"
+                  : "bg-transparent text-slate-400"
+              }`}
+            >
+              Login
+            </button>
             <button
+              type="button"
               onClick={() => switchTab("signup")}
-              style={{
-                flex: 1, padding: "0.75rem", border: "none",
-                background: mode === "signup" ? "#0f172a" : "transparent",
-                color: mode === "signup" ? "#ffffff" : "#94a3b8",
-                fontFamily: "inherit", fontSize: "0.9rem", fontWeight: 600,
-                cursor: "pointer", transition: "all 0.2s",
-              }}
-            >Sign Up</button>
+              className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
+                !isLogin
+                  ? "bg-slate-900 text-white"
+                  : "bg-transparent text-slate-400"
+              }`}
+            >
+              Sign Up
+            </button>
           </div>
 
+          {/* messages */}
           {error && (
-            <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", padding: "0.65rem 1rem", borderRadius: 8, fontSize: "0.85rem", marginBottom: "1rem" }}>
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg text-sm mb-4">
               {error}
             </div>
           )}
-
           {success && (
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#16a34a", padding: "0.65rem 1rem", borderRadius: 8, fontSize: "0.85rem", marginBottom: "1rem" }}>
+            <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2.5 rounded-lg text-sm mb-4">
               {success}
             </div>
           )}
 
+          {/* form */}
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: "1.25rem" }}>
-              <label style={{ display: "block", fontSize: "0.85rem", color: "#0f172a", marginBottom: "0.5rem", fontWeight: 600 }}>Email Address</label>
+            <div className="mb-5">
+              <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                Email Address
+              </label>
               <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com" required autoComplete="email"
-                style={{
-                  width: "100%", padding: "0.75rem 1rem", background: "#ffffff",
-                  border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a",
-                  fontFamily: "inherit", fontSize: "0.95rem", outline: "none", boxSizing: "border-box",
-                }}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                required
+                autoComplete="email"
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
               />
             </div>
 
-            <div style={{ marginBottom: "1.25rem" }}>
-              <label style={{ display: "block", fontSize: "0.85rem", color: "#0f172a", marginBottom: "0.5rem", fontWeight: 600 }}>Password</label>
+            <div className="mb-5">
+              <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                Password
+              </label>
               <input
-                type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password" required minLength={6}
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                style={{
-                  width: "100%", padding: "0.75rem 1rem", background: "#ffffff",
-                  border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a",
-                  fontFamily: "inherit", fontSize: "0.95rem", outline: "none", boxSizing: "border-box",
-                }}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+                minLength={6}
+                autoComplete={isLogin ? "current-password" : "new-password"}
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
               />
             </div>
 
-            {mode === "signup" && (
-              <div style={{ marginBottom: "1.25rem" }}>
-                <label style={{ display: "block", fontSize: "0.85rem", color: "#0f172a", marginBottom: "0.5rem", fontWeight: 600 }}>Confirm Password</label>
+            {!isLogin && (
+              <div className="mb-5">
+                <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                  Confirm Password
+                </label>
                 <input
-                  type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password" autoComplete="new-password"
-                  style={{
-                    width: "100%", padding: "0.75rem 1rem", background: "#ffffff",
-                    border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a",
-                    fontFamily: "inherit", fontSize: "0.95rem", outline: "none", boxSizing: "border-box",
-                  }}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  autoComplete="new-password"
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
                 />
               </div>
             )}
 
             <button
-              type="submit" disabled={loading}
-              style={{
-                width: "100%", padding: "0.85rem", background: "#0f172a", color: "#fff",
-                border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: "0.95rem",
-                fontWeight: 600, cursor: loading ? "not-allowed" : "pointer",
-                marginTop: "0.5rem", opacity: loading ? 0.5 : 1, transition: "opacity 0.2s",
-              }}
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-slate-900 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2 transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "..." : mode === "login" ? "Sign In" : "Create Account"}
+              {loading ? "..." : isLogin ? "Sign In" : "Create Account"}
             </button>
           </form>
 
-          <div style={{ textAlign: "center", marginTop: "1.25rem", fontSize: "0.85rem", color: "#94a3b8" }}>
-            {mode === "login" ? (
-              <>Don&apos;t have an account?{" "}<a onClick={() => switchTab("signup")} style={{ color: "#0f172a", cursor: "pointer", fontWeight: 600 }}>Sign up</a></>
+          <div className="text-center mt-5 text-sm text-slate-400">
+            {isLogin ? (
+              <>
+                Don&apos;t have an account?{" "}
+                <a
+                  onClick={() => switchTab("signup")}
+                  className="text-slate-900 font-semibold cursor-pointer hover:underline"
+                >
+                  Sign up
+                </a>
+              </>
             ) : (
-              <>Already have an account?{" "}<a onClick={() => switchTab("login")} style={{ color: "#0f172a", cursor: "pointer", fontWeight: 600 }}>Login</a></>
+              <>
+                Already have an account?{" "}
+                <a
+                  onClick={() => switchTab("login")}
+                  className="text-slate-900 font-semibold cursor-pointer hover:underline"
+                >
+                  Login
+                </a>
+              </>
             )}
           </div>
         </div>
