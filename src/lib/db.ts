@@ -4,6 +4,16 @@ import { INITIAL_STATE } from "@/hooks/useFormData";
 import type { FormData, CertificateRecord, DocumentRecord } from "@/types";
 
 /**
+ * Gets the current authenticated user's ID.
+ * Throws if the user is not authenticated.
+ */
+async function requireUserId(): Promise<string> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error("Not authenticated");
+  return user.id;
+}
+
+/**
  * Safely parses form_data from DB JSON with Zod validation.
  * Falls back to raw cast if validation fails (for backward compatibility with legacy data).
  */
@@ -20,6 +30,8 @@ function parseFormData(raw: unknown): FormData {
  * Upserts the client first, then creates the certificate record.
  */
 export async function saveCertificateDraft(formData: FormData): Promise<string> {
+  const userId = await requireUserId();
+
   // 1. Upsert Client (based on Passport Number, stored in pan_number column)
   const { data: client, error: clientError } = await supabase
     .from("clients")
@@ -27,6 +39,7 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       full_name: formData.fullName,
       salutation: formData.salutation,
       pan_number: formData.passportNumber.toUpperCase(),
+      user_id: userId,
     }, { onConflict: 'pan_number' })
     .select()
     .single();
@@ -45,6 +58,7 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       nickname: formData.nickname || formData.purpose,
       status: "draft",
       form_data: formData as unknown as Record<string, unknown>,
+      user_id: userId,
     })
     .select()
     .single();
@@ -154,6 +168,7 @@ export async function uploadDocument(
   category: string,
   file: File
 ): Promise<string> {
+  const userId = await requireUserId();
   const fileName = `${Date.now()}-${file.name}`;
   const filePath = `${certificateId}/${annexureType}/${category}/${fileName}`;
 
@@ -179,6 +194,7 @@ export async function uploadDocument(
     file_url: filePath,
     file_name: file.name,
     file_type: file.type,
+    user_id: userId,
   });
 
   if (dbError) throw dbError;

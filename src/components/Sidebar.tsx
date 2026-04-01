@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { Modal } from "@/components/ui/Modal";
 import { ClientDate } from "@/components/ui/ClientDate";
+import { supabase } from "@/lib/supabase";
 import type { CertificateRecord } from "@/types";
 import {
   Plus,
@@ -15,6 +17,7 @@ import {
   History,
   FileText,
   CheckCircle2,
+  LogOut,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -40,6 +43,15 @@ export function Sidebar({
   const [editValue, setEditValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const router = useRouter();
+
+  // Get user email on mount
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setUserEmail(user.email ?? null);
+    });
+  }, []);
 
   // Close mobile drawer on route change / resize
   useEffect(() => {
@@ -214,6 +226,27 @@ export function Sidebar({
             ))
           )}
         </div>
+      </div>
+
+      {/* User & Logout */}
+      <div className="mt-auto pt-4 border-t border-slate-200">
+        {userEmail && (
+          <p className="text-[11px] text-slate-400 truncate mb-2 px-1" title={userEmail}>
+            {userEmail}
+          </p>
+        )}
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut();
+            router.push("/login");
+          }}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-medium
+            text-slate-600 bg-slate-100 hover:bg-red-50 hover:text-red-600
+            transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-slate-300/50"
+        >
+          <LogOut className="w-4 h-4" />
+          Logout
+        </button>
       </div>
 
       {/* Delete Confirmation Modal */}

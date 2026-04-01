@@ -6,6 +6,7 @@ import {
   rateLimitResponse,
 } from "@/lib/ratelimit";
 import { OCRRequestSchema } from "@/lib/schemas";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -71,6 +72,13 @@ function validatePassport(passportNumber: string): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    // 0. Auth check
+    const supabase = createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     // 1. Rate limiting
     const identifier = getClientIdentifier(req);
     const rateResult = await ocrRateLimit.check(identifier);

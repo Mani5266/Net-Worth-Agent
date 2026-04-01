@@ -6,6 +6,7 @@ import {
   rateLimitResponse,
 } from "@/lib/ratelimit";
 import { EXCHANGE_RATE_FALLBACK_USD_INR, COUNTRY_CURRENCY_MAP, DEFAULT_CURRENCY } from "@/constants";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // Module-level cache — reused across requests within the same server process
 // Stores the full rates object (all currencies relative to USD) + timestamp
@@ -90,6 +91,13 @@ async function fetchRatesFromAPIs(): Promise<Record<string, number>> {
 
 export async function GET(req: NextRequest) {
   try {
+    // Auth check
+    const supabase = createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     // Rate limiting
     const identifier = getClientIdentifier(req);
     const rateResult = await exchangeRateLimit.check(identifier);

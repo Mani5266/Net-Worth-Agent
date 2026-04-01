@@ -6,6 +6,7 @@ import {
 } from "@/lib/ratelimit";
 import { GoldValuationRequestSchema } from "@/lib/schemas";
 import { GOLD_REFERENCE_PRICES } from "@/constants";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 /**
  * Gold price reference API.
@@ -139,6 +140,13 @@ async function getGoldPrices(): Promise<GoldPriceResponse> {
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<GoldPriceResponse | { success: false; error: string }>> {
+  // Auth check
+  const supabase = createSupabaseServerClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ success: false as const, error: "Unauthorized" }, { status: 401 });
+  }
+
   // Rate limiting
   const identifier = getClientIdentifier(request);
   const rateResult = await goldPriceRateLimit.check(identifier);
@@ -158,6 +166,13 @@ export async function GET(
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<GoldValuation | { error: string }>> {
+  // Auth check
+  const supabase = createSupabaseServerClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   // Rate limiting
   const identifier = getClientIdentifier(request);
   const rateResult = await goldPriceRateLimit.check(identifier);

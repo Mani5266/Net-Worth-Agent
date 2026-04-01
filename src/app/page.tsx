@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button, Input } from "@/components/ui";
 import { Sidebar } from "@/components/Sidebar";
@@ -27,6 +28,7 @@ import {
   renameCertificate,
   deleteCertificate,
 } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 import type { CertificateRecord } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import { Modal } from "@/components/ui/Modal";
@@ -47,6 +49,17 @@ export default function HomePage() {
 function WizardShell() {
   const { data, setData, updateField, resetStep, auditEntries, clearAudit } = useFormContext();
   const { toast } = useToast();
+  const router = useRouter();
+
+  // Redirect on sign out
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.push("/login");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
 
   // Initialize step; restore from localStorage after mount to avoid hydration mismatch
   const [step, setStep] = useState(0);
