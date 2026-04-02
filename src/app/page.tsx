@@ -339,7 +339,7 @@ function WizardShell() {
   // ── Layout ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen print-bg-none" style={{ backgroundColor: "#f5f7fb" }}>
+    <div className="min-h-screen print-bg-none bg-slate-50">
       <div className="flex flex-col lg:flex-row min-h-screen">
         <Sidebar
           history={history}
@@ -351,9 +351,19 @@ function WizardShell() {
           loading={loading}
         />
 
-        <main className="flex-1 px-4 py-8 lg:p-12 overflow-y-auto">
-          <div className="max-w-3xl mx-auto">
-            {/* Progress Bar */}
+        <main className="flex-1 px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto">
+          <div className="max-w-4xl mx-auto">
+            {/* Page Header */}
+            <div className="no-print mb-6">
+              <h1 className="text-3xl font-black text-navy-950 tracking-tight">
+                Net Worth Certificate
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Fill in the details below to generate your certificate
+              </p>
+            </div>
+
+            {/* Progress Tabs */}
             <div className="no-print mb-8">
               <ProgressBar
                 steps={STEPS}
@@ -363,9 +373,9 @@ function WizardShell() {
             </div>
 
             {/* Save Status Indicator */}
-            <div className="h-6 flex justify-end no-print mb-2">
+            <div className="h-5 flex justify-end no-print mb-1">
               {saving && (
-                <span className="text-[10px] font-bold text-navy-700 animate-pulse">
+                <span className="text-[10px] font-bold text-gold-700 animate-pulse">
                   Saving draft...
                 </span>
               )}

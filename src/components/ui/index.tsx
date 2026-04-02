@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useId } from "react";
-import { Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -16,19 +16,19 @@ export function Input({ label, required, hint, className, id: propId, ...props }
   const inputId = propId || autoId;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+        <label htmlFor={inputId} className="text-sm font-semibold text-slate-800">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
       {hint && <p className="text-xs text-slate-500 -mt-0.5">{hint}</p>}
       <input
         id={inputId}
         {...props}
-        className={`w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm
-          focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
+        className={`w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm
+          focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:border-gold-500
           hover:border-slate-400
           transition-all duration-150
           bg-white font-[inherit] ${className ?? ""}`}
@@ -50,19 +50,19 @@ export function Textarea({ label, required, hint, id: propId, ...props }: Textar
   const inputId = propId || autoId;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+        <label htmlFor={inputId} className="text-sm font-semibold text-slate-800">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
       {hint && <p className="text-xs text-slate-500 -mt-0.5">{hint}</p>}
       <textarea
         id={inputId}
         {...props}
-        className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm
-          focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
+        className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm
+          focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:border-gold-500
           hover:border-slate-400
           transition-all duration-150
           bg-white font-[inherit] resize-vertical"
@@ -85,18 +85,18 @@ export function Select({ label, required, placeholder, options, id: propId, ...p
   const inputId = propId || autoId;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={inputId} className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+        <label htmlFor={inputId} className="text-sm font-semibold text-slate-800">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
       <select
         id={inputId}
         {...props}
-        className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm
-          focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
+        className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm
+          focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:border-gold-500
           hover:border-slate-400
           transition-all duration-150 bg-white cursor-pointer"
       >
@@ -144,9 +144,9 @@ export function Checkbox({
           type="checkbox"
           checked={checked}
           onChange={onToggle}
-          className="w-4 h-4 rounded border-slate-300 text-navy-800
-            focus:ring-2 focus:ring-navy-900/10 focus:ring-offset-0
-            accent-navy-800 cursor-pointer"
+          className="w-4 h-4 rounded border-slate-300 text-gold-600
+            focus:ring-2 focus:ring-gold-400/20 focus:ring-offset-0
+            accent-gold-600 cursor-pointer"
         />
         <span>{label}</span>
       </label>
@@ -157,7 +157,7 @@ export function Checkbox({
           onChange={(e) => onCustomLabelChange(e.target.value)}
           placeholder={customPlaceholder ?? "Add details..."}
           className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg
-            focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
+            focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-500
             transition-all duration-150 bg-slate-50
             placeholder:text-slate-400"
         />
@@ -175,8 +175,8 @@ interface SectionProps {
 
 export function Section({ title, children }: SectionProps) {
   return (
-    <div className="bg-white rounded-2xl p-6 mb-4 shadow-sm border border-slate-100">
-      <h2 className="font-bold text-navy-950 text-base mb-5 pb-3 border-b-2 border-navy-100">
+    <div className="bg-white rounded-2xl p-6 mb-4 shadow-sm border border-slate-100 border-l-[3px] border-l-gold-400">
+      <h2 className="font-bold text-navy-950 text-base mb-5 pb-3 border-b border-slate-100">
         {title}
       </h2>
       {children}
@@ -184,12 +184,12 @@ export function Section({ title, children }: SectionProps) {
   );
 }
 
-// ─── Badge ────────────────────────────────────────────────────────────────────
+// ─── Info Badge ───────────────────────────────────────────────────────────────
 
 export function InfoBadge({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-3 px-4 py-2.5 bg-navy-50 rounded-lg text-xs text-navy-800 border border-navy-100 flex items-start gap-2">
-      <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+    <div className="mt-3 px-4 py-2.5 bg-gold-50 rounded-lg text-xs text-gold-800 border border-gold-200 flex items-start gap-2">
+      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-gold-600" />
       <span>{children}</span>
     </div>
   );
@@ -218,7 +218,7 @@ export function Button({ variant = "primary", size = "md", className, children, 
     <button
       {...props}
       className={`font-semibold rounded-lg border transition-all duration-150 cursor-pointer
-        focus:outline-none focus:ring-2 focus:ring-navy-900/20 focus:ring-offset-1
+        focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:ring-offset-1
         disabled:opacity-50 disabled:cursor-not-allowed
         ${variants[variant]} ${sizes[size]} ${className ?? ""}`}
     >

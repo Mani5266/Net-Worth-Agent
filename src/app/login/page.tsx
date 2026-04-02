@@ -3,31 +3,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-
-/* ── Checkmark icon used in feature bullets ─────────────────── */
-function CheckIcon() {
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#10b981"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
+import { Check } from "lucide-react";
 
 /* ── Feature bullet ─────────────────────────────────────────── */
 function Feature({ text }: { text: string }) {
   return (
     <div className="flex items-center gap-3 text-[0.95rem] font-medium text-white/80">
-      <div className="w-[22px] h-[22px] rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
-        <CheckIcon />
+      <div className="w-[22px] h-[22px] rounded-full bg-gold-500/20 flex items-center justify-center shrink-0">
+        <Check className="w-3 h-3 text-gold-400" strokeWidth={2.5} />
       </div>
       {text}
     </div>
@@ -124,8 +107,11 @@ export default function LoginPage() {
   /* ── Loading gate ───────────────────────────────────────── */
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white text-slate-400 font-sans">
-        Loading...
+      <div className="min-h-screen flex items-center justify-center bg-navy-900 text-slate-400 font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-gold-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">Loading...</span>
+        </div>
       </div>
     );
   }
@@ -136,23 +122,30 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex font-sans">
       {/* ── Left panel ──────────────────────────────────────── */}
-      <div className="w-1/2 min-h-screen bg-navy-900 text-white flex flex-col justify-between p-10 relative overflow-hidden">
+      <div className="hidden md:flex w-1/2 min-h-screen bg-navy-900 text-white flex-col justify-between p-10 relative overflow-hidden">
         {/* decorative gradient */}
-        <div className="absolute -top-20 -right-20 w-[350px] h-[350px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.15)_0%,transparent_70%)]" />
-        <div className="absolute top-0 right-0 w-full h-1.5 bg-[linear-gradient(90deg,#0f172a_0%,#1e293b_40%,#334155_70%,#0f172a_100%)]" />
+        <div className="absolute -top-20 -right-20 w-[350px] h-[350px] rounded-full bg-[radial-gradient(circle,rgba(240,185,41,0.08)_0%,transparent_70%)]" />
+        <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-navy-900 via-gold-500/40 to-navy-900" />
 
         {/* brand */}
         <div>
-          <div className="text-lg font-extrabold tracking-tight">OnEasy</div>
-          <div className="w-full h-px bg-white/[0.08] my-8" />
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gold-500 rounded-xl flex items-center justify-center text-navy-950 font-black text-base">
+              O
+            </div>
+            <span className="text-lg font-extrabold tracking-tight">OnEasy</span>
+          </div>
+          <div className="w-full h-px bg-white/[0.06] my-8" />
         </div>
 
         {/* content */}
         <div className="flex-1 flex flex-col justify-center">
           <h1 className="text-[2.5rem] font-black tracking-tight leading-tight mb-5">
-            Net Worth Certificate
+            Net Worth
+            <br />
+            Certificate
           </h1>
-          <p className="text-base text-white/55 leading-relaxed max-w-[420px]">
+          <p className="text-base text-white/50 leading-relaxed max-w-[420px]">
             Prepare, review, and issue professional net worth certificates for
             Indian applicants. Accurate, structured, and CA-ready.
           </p>
@@ -163,14 +156,22 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="text-xs text-white/30">
+        <div className="text-xs text-white/25">
           &copy; 2026 OnEasy. All rights reserved.
         </div>
       </div>
 
       {/* ── Right panel ─────────────────────────────────────── */}
-      <div className="w-1/2 min-h-screen flex items-center justify-center bg-white p-10">
+      <div className="w-full md:w-1/2 min-h-screen flex items-center justify-center bg-white p-8 md:p-10">
         <div className="w-full max-w-[420px]">
+          {/* Mobile brand */}
+          <div className="md:hidden flex items-center gap-3 mb-8">
+            <div className="w-9 h-9 bg-gold-500 rounded-xl flex items-center justify-center text-navy-950 font-black text-base">
+              O
+            </div>
+            <span className="text-lg font-extrabold text-navy-950 tracking-tight">OnEasy</span>
+          </div>
+
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
             {isLogin ? "Sign in to your account" : "Create your account"}
           </h2>
@@ -187,7 +188,7 @@ export default function LoginPage() {
               onClick={() => switchTab("login")}
               className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
                 isLogin
-                  ? "bg-slate-900 text-white"
+                  ? "bg-navy-950 text-white"
                   : "bg-transparent text-slate-400"
               }`}
             >
@@ -198,7 +199,7 @@ export default function LoginPage() {
               onClick={() => switchTab("signup")}
               className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
                 !isLogin
-                  ? "bg-slate-900 text-white"
+                  ? "bg-navy-950 text-white"
                   : "bg-transparent text-slate-400"
               }`}
             >
@@ -231,7 +232,8 @@ export default function LoginPage() {
                 placeholder="name@company.com"
                 required
                 autoComplete="email"
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                  focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
               />
             </div>
 
@@ -247,7 +249,8 @@ export default function LoginPage() {
                 required
                 minLength={6}
                 autoComplete={isLogin ? "current-password" : "new-password"}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                  focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
               />
             </div>
 
@@ -262,7 +265,8 @@ export default function LoginPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm your password"
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none focus:border-slate-900 transition-colors placeholder:text-slate-400"
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                    focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
                 />
               </div>
             )}
@@ -270,7 +274,8 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-slate-900 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2 transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2
+                transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "..." : isLogin ? "Sign In" : "Create Account"}
             </button>
@@ -282,7 +287,7 @@ export default function LoginPage() {
                 Don&apos;t have an account?{" "}
                 <a
                   onClick={() => switchTab("signup")}
-                  className="text-slate-900 font-semibold cursor-pointer hover:underline"
+                  className="text-navy-950 font-semibold cursor-pointer hover:underline"
                 >
                   Sign up
                 </a>
@@ -292,7 +297,7 @@ export default function LoginPage() {
                 Already have an account?{" "}
                 <a
                   onClick={() => switchTab("login")}
-                  className="text-slate-900 font-semibold cursor-pointer hover:underline"
+                  className="text-navy-950 font-semibold cursor-pointer hover:underline"
                 >
                   Login
                 </a>

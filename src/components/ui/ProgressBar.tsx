@@ -1,29 +1,7 @@
 "use client";
 
 import type { StepDefinition } from "@/types";
-import {
-  Target,
-  User,
-  IndianRupee,
-  Building,
-  Car,
-  Landmark,
-  PenTool,
-  FileText,
-  Check,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-
-const STEP_ICON_MAP: Record<string, LucideIcon> = {
-  target: Target,
-  user: User,
-  "indian-rupee": IndianRupee,
-  building: Building,
-  car: Car,
-  landmark: Landmark,
-  "pen-tool": PenTool,
-  "file-text": FileText,
-};
+import { Check } from "lucide-react";
 
 interface ProgressBarProps {
   steps: StepDefinition[];
@@ -33,54 +11,48 @@ interface ProgressBarProps {
 
 export function ProgressBar({ steps, currentStep, onClickStep }: ProgressBarProps) {
   return (
-    <div className="flex items-start overflow-x-auto pb-1 mb-7">
-      {steps.map((step, i) => {
-        const done = i < currentStep;
-        const active = i === currentStep;
-        const Icon = STEP_ICON_MAP[step.icon];
+    <div>
+      {/* Tab row */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-0">
+        {steps.map((step, i) => {
+          const done = i < currentStep;
+          const active = i === currentStep;
 
-        return (
-          <div key={step.id} className="flex items-center flex-1 min-w-[60px]">
-            {/* Node */}
-            <div className="flex flex-col items-center gap-1">
-              <button
-                onClick={() => done && onClickStep(i)}
-                aria-label={`Step ${i + 1}: ${step.label}${done ? " (completed)" : active ? " (current)" : ""}`}
-                className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm
-                  transition-all duration-200 border-2 flex-shrink-0
-                  ${
-                    done
-                      ? "bg-navy-950 text-white border-navy-950 cursor-pointer hover:bg-navy-900"
-                      : active
-                      ? "bg-navy-700 text-white border-navy-600 shadow-[0_0_0_4px_rgba(15,26,46,0.12)]"
-                      : "bg-slate-100 text-slate-400 border-slate-200 cursor-default"
-                  }`}
-              >
-                {done ? (
-                  <Check className="w-4 h-4" strokeWidth={3} />
-                ) : Icon ? (
-                  <Icon className="w-4 h-4" />
-                ) : (
-                  <span className="text-xs">{i + 1}</span>
-                )}
-              </button>
-              <span
-                className={`text-[10px] whitespace-nowrap font-medium
-                  ${active ? "text-navy-950 font-bold" : done ? "text-navy-700" : "text-slate-400"}`}
-              >
+          return (
+            <button
+              key={step.id}
+              onClick={() => done && onClickStep(i)}
+              aria-label={`Step ${i + 1}: ${step.label}${done ? " (completed)" : active ? " (current)" : ""}`}
+              className={`
+                relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all duration-200
+                ${done
+                  ? "text-navy-950 cursor-pointer hover:text-gold-700"
+                  : active
+                    ? "text-navy-950"
+                    : "text-slate-400 cursor-default"
+                }
+              `}
+            >
+              <span className="flex items-center gap-1.5">
+                {done && <Check className="w-3.5 h-3.5 text-gold-600" strokeWidth={2.5} />}
                 {step.label}
               </span>
-            </div>
-            {/* Connector */}
-            {i < steps.length - 1 && (
-              <div
-                className={`flex-1 h-0.5 mx-1 mb-4 transition-colors duration-200
-                  ${done ? "bg-navy-950" : "bg-slate-200"}`}
-              />
-            )}
-          </div>
-        );
-      })}
+              {/* Active underline */}
+              {active && (
+                <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full bg-gradient-to-r from-gold-500 to-gold-400" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Bottom border + gold progress line */}
+      <div className="relative h-[2px] bg-slate-200">
+        <div
+          className="absolute top-0 left-0 h-full bg-gradient-to-r from-gold-500 to-gold-400 transition-all duration-500 ease-out rounded-full"
+          style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+        />
+      </div>
     </div>
   );
 }
