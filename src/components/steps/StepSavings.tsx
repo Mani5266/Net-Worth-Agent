@@ -66,6 +66,17 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
   const prevPersonsRef = useRef<string[]>(selectedPersons);
   const prevLabelsRef = useRef<string>(JSON.stringify(data.savingsLabels));
 
+  // ── Auto-fill "Self" label with applicant's fullName when "Self" is selected ──
+  useEffect(() => {
+    if (
+      selectedPersons.includes("Self") &&
+      !data.savingsLabels["Self"] &&
+      data.fullName
+    ) {
+      updateLabel("savingsLabels")("Self", data.fullName);
+    }
+  }, [selectedPersons, data.fullName, data.savingsLabels, updateLabel]);
+
   // ── Clean up when persons are unchecked ─────────────────────────────────
   useEffect(() => {
     const prev = prevPersonsRef.current;

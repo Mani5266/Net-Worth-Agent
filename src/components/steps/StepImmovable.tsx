@@ -66,6 +66,17 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
   const prevPersonsRef = useRef<string[]>(selectedPersons);
   const prevLabelsRef = useRef<string>(JSON.stringify(data.immovableLabels));
 
+  // ── Auto-fill "Self" label with applicant's fullName when "Self" is selected ──
+  useEffect(() => {
+    if (
+      selectedPersons.includes("Self") &&
+      !data.immovableLabels["Self"] &&
+      data.fullName
+    ) {
+      updateLabel("immovableLabels")("Self", data.fullName);
+    }
+  }, [selectedPersons, data.fullName, data.immovableLabels, updateLabel]);
+
   // ── Clean up when persons are unchecked ─────────────────────────────────
   useEffect(() => {
     const prev = prevPersonsRef.current;

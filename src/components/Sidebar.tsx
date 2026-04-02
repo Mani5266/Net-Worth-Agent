@@ -85,9 +85,14 @@ export function Sidebar({
         <div className="w-10 h-10 bg-navy-950 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg shadow-navy-950/20">
           O
         </div>
-        <h1 className="text-xl font-extrabold text-navy-950 tracking-tight leading-tight">
-          OnEasy
-        </h1>
+        <div>
+          <h1 className="text-xl font-extrabold text-navy-950 tracking-tight leading-tight">
+            OnEasy
+          </h1>
+          <p className="text-[11px] font-semibold text-slate-400 tracking-wide leading-tight">
+            Net Worth Agent
+          </p>
+        </div>
       </div>
 
       {/* New Certificate */}

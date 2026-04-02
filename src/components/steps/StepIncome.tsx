@@ -48,6 +48,17 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
     }
   }, [derivedYear, data.assessmentYear, updateField]);
 
+  // ── Auto-fill "Self" label with applicant's fullName when "Self" is selected ──
+  useEffect(() => {
+    if (
+      selectedPersons.includes("Self") &&
+      !data.incomeLabels["Self"] &&
+      data.fullName
+    ) {
+      updateLabel("incomeLabels")("Self", data.fullName);
+    }
+  }, [selectedPersons, data.fullName, data.incomeLabels, updateLabel]);
+
   // ── Sync incomeRows / incomeFR when persons change ──────────────────────
   useEffect(() => {
     const prev = prevPersonsRef.current;
