@@ -30,34 +30,41 @@
   -- ############################################################################
   -- STORAGE RLS POLICIES
   -- ############################################################################
-  -- File path pattern: {certificateId}/{annexureType}/{category}/{timestamp}-{fileName}
+  -- File path pattern: {userId}/{certificateId}/{annexureType}/{category}/{timestamp}-{fileName}
   --
-  -- Strategy: Authenticated users can upload/read/delete files.
-  -- The app already scopes file paths to certificateId, and the certificates
-  -- table has RLS ensuring users can only access their own certificates.
-  -- We add a storage-level policy for defense-in-depth.
+  -- Strategy: owner_id-based isolation. Supabase automatically sets owner_id
+  -- to auth.uid() on upload. SELECT and DELETE check owner_id = auth.uid()
+  -- with NULL safety to prevent exposure from malformed rows.
   -- ############################################################################
 
-  -- Allow authenticated users to upload files
+  -- Allow authenticated users to upload files (owner_id auto-set by Supabase)
   DROP POLICY IF EXISTS "Authenticated users can upload documents" ON storage.objects;
   CREATE POLICY "Authenticated users can upload documents"
     ON storage.objects FOR INSERT
     TO authenticated
     WITH CHECK (bucket_id = 'networth-documents');
 
-  -- Allow authenticated users to read their own uploaded files
+  -- Only file owner can read their files
   DROP POLICY IF EXISTS "Authenticated users can read documents" ON storage.objects;
   CREATE POLICY "Authenticated users can read documents"
     ON storage.objects FOR SELECT
     TO authenticated
-    USING (bucket_id = 'networth-documents');
+    USING (
+      bucket_id = 'networth-documents'
+      AND owner_id IS NOT NULL
+      AND owner_id = auth.uid()
+    );
 
-  -- Allow authenticated users to delete files they own
+  -- Only file owner can delete their files
   DROP POLICY IF EXISTS "Authenticated users can delete documents" ON storage.objects;
   CREATE POLICY "Authenticated users can delete documents"
     ON storage.objects FOR DELETE
     TO authenticated
-    USING (bucket_id = 'networth-documents');
+    USING (
+      bucket_id = 'networth-documents'
+      AND owner_id IS NOT NULL
+      AND owner_id = auth.uid()
+    );
 
 
   -- ############################################################################

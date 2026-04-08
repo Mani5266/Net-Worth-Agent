@@ -30,9 +30,9 @@ export async function middleware(request: NextRequest) {
     );
 
     // Refresh the session (important for keeping tokens alive)
-    const { data, error } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
 
-    if (error || !data?.user) {
+    if (!data?.user) {
       // Not authenticated — redirect to login (unless already there)
       if (!isLoginPage) {
         const url = request.nextUrl.clone();

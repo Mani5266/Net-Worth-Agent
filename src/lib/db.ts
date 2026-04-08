@@ -171,7 +171,7 @@ export async function uploadDocument(
 ): Promise<{ path: string; documentId: string }> {
   const userId = await requireUserId();
   const fileName = `${Date.now()}-${file.name}`;
-  const filePath = `${certificateId}/${annexureType}/${category}/${fileName}`;
+  const filePath = `${userId}/${certificateId}/${annexureType}/${category}/${fileName}`;
 
   // 1. Upload to Storage
   const { error: uploadError } = await supabase.storage
@@ -231,7 +231,10 @@ export async function getDocuments(certificateId: string): Promise<DocumentRecor
 
   if (error) throw error;
 
-  // Generate signed URLs for each (5 minutes)
+  // Generate signed URLs for each
+  // NOTE: Signed URLs bypass storage RLS once generated. 60s expiry is ideal
+  // for security but may cause UX issues if users review documents slowly.
+  // Current: 300s (5 min). Future hardening: reduce to 60s.
   const docsWithUrls = await Promise.all(
     data.map(async (doc) => {
       const { data: signedUrlData } = await supabase.storage

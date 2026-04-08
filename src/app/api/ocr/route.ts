@@ -64,27 +64,14 @@ function maskPassport(pp: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    // 0. Auth check — try server client first, fall back to session check
-    let authenticated = false;
-    try {
-      const supabase = createSupabaseServerClient();
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      authenticated = !authError && !!user;
-    } catch {
-      // Cookie parsing can fail in certain edge cases; try to check session header
-      authenticated = false;
-    }
-
-    if (!authenticated) {
-      // Second chance: check if the request has a valid Supabase auth cookie at all
-      // This handles cases where cookie forwarding has timing issues
-      const cookieHeader = req.headers.get("cookie") || "";
-      const hasAuthCookie = cookieHeader.includes("sb-") && cookieHeader.includes("auth-token");
-      if (!hasAuthCookie) {
-        return NextResponse.json({ success: false, error: "Unauthorized. Please log in and try again." }, { status: 401 });
-      }
-      // If auth cookie exists but getUser() failed, allow the request
-      // (session may be in the process of being refreshed by middleware)
+    // 0. Auth check — hard failure, no fallbacks
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Please log in and try again." },
+        { status: 401 }
+      );
     }
 
     // 1. Rate limiting

@@ -26,29 +26,14 @@ Rules:
 
 export async function POST(req: NextRequest) {
   try {
-    // 0. Auth check — same pattern as OCR / AI-intake routes
-    let authenticated = false;
-    try {
-      const supabase = createSupabaseServerClient();
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      authenticated = !authError && !!user;
-    } catch {
-      authenticated = false;
-    }
-
-    if (!authenticated) {
-      const cookieHeader = req.headers.get("cookie") || "";
-      const hasAuthCookie =
-        cookieHeader.includes("sb-") && cookieHeader.includes("auth-token");
-      if (!hasAuthCookie) {
-        return NextResponse.json(
-          { success: false, error: "Unauthorized. Please log in and try again." },
-          { status: 401 }
-        );
-      }
+    // 0. Auth check — hard failure, no fallbacks
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Please log in and try again." },
+        { status: 401 }
+      );
     }
 
     // 1. Rate limiting

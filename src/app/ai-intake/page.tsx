@@ -59,7 +59,7 @@ export default function AIIntakePage() {
     inputRef.current?.focus();
   }, []);
 
-  // Client-side auth guard
+  // Client-side auth guard + sign-out listener
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -70,7 +70,17 @@ export default function AIIntakePage() {
       }
       setAuthReady(true);
     });
-    return () => { cancelled = true; };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.replace("/login");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   // Detect voice support (client-only)
