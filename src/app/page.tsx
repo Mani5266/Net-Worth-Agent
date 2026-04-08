@@ -51,15 +51,33 @@ function WizardShell() {
   const { data, setData, updateField, resetStep, auditEntries, clearAudit } = useFormContext();
   const { toast } = useToast();
   const router = useRouter();
+  const [authReady, setAuthReady] = useState(false);
 
-  // Redirect on sign out
+  // Client-side auth guard — verify session on mount + listen for sign-out
   useEffect(() => {
+    let cancelled = false;
+
+    // 1. Check session immediately on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setAuthReady(true);
+    });
+
+    // 2. Listen for auth state changes (sign-out, token refresh, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        router.push("/login");
+        router.replace("/login");
       }
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   // Initialize step; restore from localStorage after mount to avoid hydration mismatch
@@ -494,6 +512,18 @@ function WizardShell() {
   };
 
   // ── Layout ───────────────────────────────────────────────────────────────
+
+  // Block rendering until auth is confirmed
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-gold-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-400">Loading...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen print-bg-none bg-slate-50">

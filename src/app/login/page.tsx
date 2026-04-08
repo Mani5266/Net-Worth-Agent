@@ -76,15 +76,20 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
+
+        // Even if Supabase auto-confirms and returns a session,
+        // we sign out and require the user to login explicitly.
+        // This prevents bypassing the login step via signup.
         if (data.session) {
-          router.replace("/");
-          return;
+          await supabase.auth.signOut();
         }
 
         setSuccess(
-          "Account created! Please check your email to confirm, then login."
+          "Account created successfully! Please login with your credentials."
         );
         setMode("login");
+        setPassword("");
+        setConfirmPassword("");
       } else {
         const { error: signInError } =
           await supabase.auth.signInWithPassword({ email, password });

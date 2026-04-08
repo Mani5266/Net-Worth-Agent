@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui";
 import { INITIAL_STATE } from "@/hooks/useFormData";
 import type { FormData } from "@/types";
+import { supabase } from "@/lib/supabase";
 import { ArrowLeft, Send, Sparkles, Loader2, Mic, Square } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ const INITIAL_GREETING: ChatMessage = {
 
 export default function AIIntakePage() {
   const router = useRouter();
+  const [authReady, setAuthReady] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_GREETING]);
   const [latestExtractedData, setLatestExtractedData] = useState<Partial<FormData>>({});
   const [input, setInput] = useState("");
@@ -56,6 +58,20 @@ export default function AIIntakePage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Client-side auth guard
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setAuthReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [router]);
 
   // Detect voice support (client-only)
   useEffect(() => {
@@ -253,6 +269,18 @@ export default function AIIntakePage() {
   const extractedCount = Object.keys(latestExtractedData).length;
 
   // ── Render ───────────────────────────────────────────────────────────────
+
+  // Block rendering until auth is confirmed
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-gold-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-400">Loading...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
