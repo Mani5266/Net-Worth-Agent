@@ -2,6 +2,13 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // ─── Server External Packages ─────────────────────────────────────────────
+  // tesseract.js uses node:worker_threads internally — webpack can't bundle
+  // the worker script path correctly, so we externalize it to load at runtime.
+  experimental: {
+    serverComponentsExternalPackages: ["tesseract.js", "sharp"],
+  },
+
   // ─── Security Headers ───────────────────────────────────────────────────────
   async headers() {
     return [

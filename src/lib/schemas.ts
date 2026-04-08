@@ -1,9 +1,7 @@
 import { z } from "zod";
+import { isValidPassportNumber } from "./mrz";
 
 // ─── Primitive Patterns ──────────────────────────────────────────────────────
-
-/** Indian Passport: 1 uppercase letter + 7 digits (e.g. J1234567) */
-const PASSPORT_REGEX = /^[A-Z][0-9]{7}$/;
 
 /** UDIN: 14-digit numeric string issued by ICAI */
 const UDIN_REGEX = /^[0-9]{14}$/;
@@ -39,22 +37,26 @@ export const AnnexureRowSchema = z.object({
 export const UploadedDocSchema = z.object({
   name: z.string().min(1),
   size: z.number().nonnegative(),
-  dataUrl: z.string().min(1),
+  path: z.string().default(""),        // Supabase storage path (primary reference)
+  documentId: z.string().default(""),  // documents table row ID (for deletion)
+  dataUrl: z.string().optional(),      // LEGACY — ignored, kept for backward compat parse
 });
 
 // ─── Passport Validation ─────────────────────────────────────────────────────
 
+const PASSPORT_MSG = "Passport must be 1 letter + 7 digits (e.g. J1234567)";
+
 export const PassportSchema = z
   .string()
-  .toUpperCase()
-  .regex(PASSPORT_REGEX, "Passport must be 1 letter + 7 digits (e.g. J1234567)");
+  .transform((val) => val.replace(/\s/g, "").toUpperCase())
+  .refine((val) => isValidPassportNumber(val), PASSPORT_MSG);
 
 /** Loose Passport — accepts empty string (for draft state) or valid Passport */
 export const PassportLooseSchema = z
   .string()
   .refine(
-    (val) => val === "" || PASSPORT_REGEX.test(val.toUpperCase()),
-    "Passport must be 1 letter + 7 digits (e.g. J1234567)"
+    (val) => val === "" || isValidPassportNumber(val.replace(/\s/g, "").toUpperCase()),
+    PASSPORT_MSG
   );
 
 // ─── UDIN Validation ─────────────────────────────────────────────────────────
@@ -132,6 +134,8 @@ export const MovableAssetSchema = z.object({
   assetType: z.string().min(1, "Asset type is required"),
   customType: z.string(),        // Only used when assetType === "Other Movable Assets"
   description: z.string(),       // Description of the asset
+  goldGrams: z.string().optional().default(""),     // Per-asset gold weight (only for Gold & Jewellery)
+  goldKarat: z.enum(["22K", "24K"]).optional().default("22K"), // Per-asset gold purity
 });
 
 /** Record<string, MovableAsset[]> — assets keyed by person */
@@ -143,6 +147,9 @@ export const SavingsEntrySchema = z.object({
   category: z.string().min(1, "Category is required"),
   customCategory: z.string(),    // Only used when category === "Other Additions"
   description: z.string(),       // Description of the savings item
+  bankName: z.string().optional().default(""),        // Only for Bank-Related Assets
+  accountNature: z.string().optional().default(""),   // "Savings" | "Current"
+  bankBranch: z.string().optional().default(""),      // Branch name
 });
 
 /** Record<string, SavingsEntry[]> — entries keyed by person */
@@ -219,18 +226,9 @@ export const FormDataSchema = z.object({
 export const StepPurposeSchema = z.object({
   purpose: PurposeValueSchema,
   certDate: ISODateSchema,
-  country: z.string(), // Required only for foreign purposes — refined below
+  country: z.string().min(1, "Country is required"), // Always required
   exchangeRate: z.string(),
-}).refine(
-  (data) => {
-    const foreignPurposes: string[] = ["travel_visa", "study_loan", "foreign_collab"];
-    if (foreignPurposes.includes(data.purpose)) {
-      return data.country.trim().length > 0;
-    }
-    return true;
-  },
-  { message: "Country is required for travel/study/foreign collaboration purposes", path: ["country"] }
-);
+});
 
 export const StepApplicantSchema = z.object({
   salutation: SalutationSchema,
@@ -298,10 +296,7 @@ export const DocumentRecordSchema = z.object({
 
 // ─── API Request/Response Schemas ────────────────────────────────────────────
 
-export const OCRRequestSchema = z.object({
-  image: z.string().min(1, "Image is required"),
-  documentType: z.enum(["passport", "aadhaar"]),
-});
+// NOTE: OCRRequestSchema removed — OCR route now uses FormData (not JSON body)
 
 export const OCRPassportResponseSchema = z.object({
   success: z.literal(true),

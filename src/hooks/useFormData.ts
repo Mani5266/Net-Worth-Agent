@@ -1,8 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { FormData, AnnexureRow, UploadedDoc } from "@/types";
-import { uploadDocument } from "@/lib/db";
+import { uploadDocument, deleteDocument } from "@/lib/db";
 
 const FORM_STORAGE_KEY = "networth_form_data";
+const FIRM_STORAGE_KEY = "networth_firm_details";
+
+/** Fields stored in the firm profile (persists across certificate resets) */
+const FIRM_FIELDS = ["firmName", "firmFRN", "signatoryName", "signatoryTitle", "membershipNo", "signPlace"] as const;
+type FirmField = typeof FIRM_FIELDS[number];
 
 const INITIAL_INCOME_ROWS: AnnexureRow[] = [];
 
@@ -109,11 +114,54 @@ function loadFormFromStorage(): FormData | null {
   return null;
 }
 
+/** Doc fields that may contain legacy base64 dataUrl */
+const DOC_FIELDS = ["incomeDocs", "immovableDocs", "movableDocs", "savingsDocs"] as const;
+
 function saveFormToStorage(data: FormData): void {
   try {
-    localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(data));
+    // Strip legacy dataUrl from doc maps to prevent localStorage bloat
+    const cleaned = { ...data };
+    for (const field of DOC_FIELDS) {
+      const docMap = cleaned[field] as Record<string, UploadedDoc[]>;
+      const stripped: Record<string, UploadedDoc[]> = {};
+      for (const [key, docs] of Object.entries(docMap)) {
+        stripped[key] = docs.map(({ name, size, path, documentId }) => ({
+          name,
+          size,
+          path: path ?? "",
+          documentId: documentId ?? "",
+        }));
+      }
+      (cleaned as Record<string, unknown>)[field] = stripped;
+    }
+    localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(cleaned));
   } catch {
     // Storage full or unavailable — ignore
+  }
+}
+
+/** Load saved firm profile (persists across certificate resets) */
+function loadFirmProfile(): Partial<Record<FirmField, string>> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(FIRM_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Save firm profile to separate localStorage key */
+function saveFirmProfile(data: FormData): void {
+  try {
+    const profile: Partial<Record<FirmField, string>> = {};
+    for (const key of FIRM_FIELDS) {
+      profile[key] = data[key] as string;
+    }
+    localStorage.setItem(FIRM_STORAGE_KEY, JSON.stringify(profile));
+  } catch {
+    // ignore
   }
 }
 
@@ -126,8 +174,25 @@ export function useFormData() {
   // Restore from localStorage after mount to avoid hydration mismatch
   useEffect(() => {
     const saved = loadFormFromStorage();
-    if (saved) {
-      setData(saved);
+    const firmProfile = loadFirmProfile();
+
+    let merged = saved ?? INITIAL_STATE;
+
+    // Pre-fill firm details from saved profile if the form fields are empty
+    if (firmProfile) {
+      const updates: Partial<FormData> = {};
+      for (const key of FIRM_FIELDS) {
+        if (!merged[key] && firmProfile[key]) {
+          (updates as Record<string, string>)[key] = firmProfile[key]!;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        merged = { ...merged, ...updates };
+      }
+    }
+
+    if (saved || firmProfile) {
+      setData(merged);
     }
     // Mark first render done after restore (so subsequent changes get saved)
     isFirstRender.current = false;
@@ -137,13 +202,36 @@ export function useFormData() {
   useEffect(() => {
     if (isFirstRender.current) return;
     saveFormToStorage(data);
+    // Also persist firm details to separate key (survives certificate reset)
+    saveFirmProfile(data);
   }, [data]);
 
   // Reset only the fields belonging to a specific step
   const resetStep = useCallback((stepIndex: number) => {
+    // Clean up uploaded documents from Storage before resetting state
+    const docFieldMap: Record<number, "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs"> = {
+      2: "incomeDocs",
+      3: "immovableDocs",
+      4: "movableDocs",
+      5: "savingsDocs",
+    };
+    const docField = docFieldMap[stepIndex];
+    if (docField) {
+      const docMap = data[docField] as Record<string, UploadedDoc[]>;
+      for (const docs of Object.values(docMap)) {
+        for (const doc of docs) {
+          if (doc.documentId && doc.path) {
+            deleteDocument(doc.documentId, doc.path).catch((err) =>
+              console.error("Failed to delete document on step reset:", err)
+            );
+          }
+        }
+      }
+    }
+
     const defaults = getStepDefaults(stepIndex);
     setData((prev) => ({ ...prev, ...defaults }));
-  }, []);
+  }, [data]);
 
   // Generic field update
   const updateField = useCallback(<K extends keyof FormData>(
@@ -214,31 +302,18 @@ export function useFormData() {
     []
   );
 
-  // Generic document handlers to avoid extreme repetition
+  // Generic document handlers — upload directly to Supabase Storage (no base64)
   const addDocs = useCallback((field: "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs") => 
-    (type: string, files: File[], certificateId?: string) => {
-      files.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const dataUrl = e.target?.result as string;
-          let supabaseUrl = "";
-
-          // If we have a certificateId, upload to Supabase Storage
-          if (certificateId) {
-            try {
-              const annexureType = field.replace("Docs", "");
-              supabaseUrl = await uploadDocument(certificateId, annexureType, type, file);
-            } catch {
-              // Upload failed — doc will still be saved locally via dataUrl
-            }
-          }
-
-          const doc: UploadedDoc = { 
-            name: file.name, 
-            size: file.size, 
-            dataUrl 
-          };
-
+    async (type: string, files: File[], certificateId?: string) => {
+      if (!certificateId) {
+        console.error("Cannot upload document: no certificateId yet");
+        return;
+      }
+      const annexureType = field.replace("Docs", "");
+      for (const file of files) {
+        try {
+          const { path, documentId } = await uploadDocument(certificateId, annexureType, type, file);
+          const doc: UploadedDoc = { name: file.name, size: file.size, path, documentId };
           setData((prev) => {
             const existing = (prev[field] as Record<string, UploadedDoc[]>)[type] ?? [];
             return {
@@ -249,16 +324,27 @@ export function useFormData() {
               },
             };
           });
-        };
-        reader.readAsDataURL(file);
-      });
+        } catch (err) {
+          console.error("Document upload failed:", err);
+          // Don't add to state if upload failed — no silent fallback to base64
+        }
+      }
     }, []);
 
   const removeDoc = useCallback((field: "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs") => 
     (type: string, index: number) => {
       setData((prev) => {
         const existing = [...((prev[field] as Record<string, UploadedDoc[]>)[type] ?? [])];
+        const removed = existing[index];
         existing.splice(index, 1);
+
+        // Fire-and-forget storage cleanup (don't block UI)
+        if (removed?.documentId && removed?.path) {
+          deleteDocument(removed.documentId, removed.path).catch((err) =>
+            console.error("Failed to delete document from storage:", err)
+          );
+        }
+
         return {
           ...prev,
           [field]: { ...(prev[field] as Record<string, UploadedDoc[]>), [type]: existing },

@@ -159,6 +159,13 @@ export const SAVINGS_CATEGORY_OPTIONS: string[] = [
   "Other Additions",
 ];
 
+// ─── Bank Account Nature Options (Annexure IV — Bank-Related Assets) ─────────
+
+export const ACCOUNT_NATURE_OPTIONS: string[] = [
+  "Savings",
+  "Current",
+];
+
 // ─── Supporting Docs ──────────────────────────────────────────────────────────
 
 export const SUPPORTING_DOCS: string[] = [

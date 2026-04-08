@@ -16,20 +16,12 @@ export function StepSignatory() {
             value={data.firmName}
             onChange={(e) => updateField("firmName", e.target.value)}
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Firm Type"
-              placeholder="e.g. Chartered Accountants"
-              value={data.firmType}
-              onChange={(e) => updateField("firmType", e.target.value)}
-            />
-            <Input
-              label="Firm Registration Number (FRN)"
-              placeholder="e.g. 012345S"
-              value={data.firmFRN}
-              onChange={(e) => updateField("firmFRN", e.target.value)}
-            />
-          </div>
+          <Input
+            label="Firm Registration Number (FRN)"
+            placeholder="e.g. 012345S"
+            value={data.firmFRN}
+            onChange={(e) => updateField("firmFRN", e.target.value)}
+          />
         </div>
       </Section>
 

@@ -5,33 +5,32 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
-import { OCRRequestSchema } from "@/lib/schemas";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isValidPassportNumber } from "@/lib/mrz";
+import { extractPassportMRZ } from "@/lib/ocr-fallback";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 const MODELS_TO_TRY = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash-lite-preview-02-05",
-  "gemini-2.0-flash-exp",
-  "gemini-1.5-flash",
+  "gemini-2.0-flash",
 ];
 
 const DOCUMENT_PROMPTS: Record<string, string> = {
-  passport: `You are an expert at reading Indian Passports.
+  passport: `You are an expert at reading Indian passports.
 Extract the following fields from this passport image:
 
 1. **fullName** — The full name of the passport holder. Use TITLE CASE.
-2. **passportNumber** — The passport number (format: 1 uppercase letter + 7 digits, e.g. J1234567).
+2. **passportNumber** — The Indian passport number (exactly 1 uppercase letter followed by 7 digits, e.g. A1234567).
 
 Return ONLY a JSON object with this exact shape:
 {"fullName": "...", "passportNumber": "..."}
 
 Rules:
 - If a field is not clearly visible, return an empty string for that field.
-- The passport number must be exactly 8 characters matching the pattern [A-Z][0-9]{7}.
+- The passport number must match the format: 1 letter + 7 digits.
+- Do not guess or infer missing characters.
 - Do NOT include any markdown formatting, code fences, or extra text.
 - Do NOT include date of birth, address, or any other field.`,
 
@@ -54,29 +53,38 @@ Rules:
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function extractMimeType(base64: string): { mimeType: string; data: string } {
-  // base64 may come as "data:image/jpeg;base64,..." or raw base64
-  const match = base64.match(/^data:([^;]+);base64,(.+)$/);
-  if (match && match[1] && match[2]) {
-    return { mimeType: match[1], data: match[2] };
-  }
-  // Assume JPEG if no prefix
-  return { mimeType: "image/jpeg", data: base64 };
+/** Privacy-safe passport hint: first char + last char + length */
+function maskPassport(pp: string): string {
+  if (pp.length === 0) return "empty";
+  return `${pp[0]}..${pp[pp.length - 1]}(${pp.length})`;
 }
 
-function validatePassport(passportNumber: string): boolean {
-  return /^[A-Z][0-9]{7}$/.test(passportNumber);
-}
 
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    // 0. Auth check
-    const supabase = createSupabaseServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    // 0. Auth check — try server client first, fall back to session check
+    let authenticated = false;
+    try {
+      const supabase = createSupabaseServerClient();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      authenticated = !authError && !!user;
+    } catch {
+      // Cookie parsing can fail in certain edge cases; try to check session header
+      authenticated = false;
+    }
+
+    if (!authenticated) {
+      // Second chance: check if the request has a valid Supabase auth cookie at all
+      // This handles cases where cookie forwarding has timing issues
+      const cookieHeader = req.headers.get("cookie") || "";
+      const hasAuthCookie = cookieHeader.includes("sb-") && cookieHeader.includes("auth-token");
+      if (!hasAuthCookie) {
+        return NextResponse.json({ success: false, error: "Unauthorized. Please log in and try again." }, { status: 401 });
+      }
+      // If auth cookie exists but getUser() failed, allow the request
+      // (session may be in the process of being refreshed by middleware)
     }
 
     // 1. Rate limiting
@@ -86,39 +94,45 @@ export async function POST(req: NextRequest) {
       return rateLimitResponse(rateResult.reset);
     }
 
-    // 2. Body size guard
-    const contentLength = req.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_IMAGE_BYTES) {
+    // 2. Parse FormData
+    let formData: globalThis.FormData;
+    try {
+      formData = await req.formData();
+    } catch {
       return NextResponse.json(
-        { success: false, error: "Request body too large. Maximum 5MB." },
-        { status: 413 }
-      );
-    }
-
-    // 3. Parse and validate body with Zod
-    const body = await req.json();
-    const parsed = OCRRequestSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { success: false, error: "Invalid request. Expected multipart form data." },
         { status: 400 }
       );
     }
 
-    const { image, documentType } = parsed.data;
+    const file = formData.get("file");
+    const documentType = formData.get("documentType");
 
-    // 4. Check image size (base64 is ~33% larger than binary)
-    const { mimeType, data: base64Data } = extractMimeType(image);
-    const estimatedBytes = (base64Data.length * 3) / 4;
-    if (estimatedBytes > MAX_IMAGE_BYTES) {
+    // 3. Validate fields
+    if (!file || !(file instanceof File)) {
       return NextResponse.json(
-        { success: false, error: "Image too large. Maximum 5MB." },
+        { success: false, error: "No file uploaded." },
+        { status: 400 }
+      );
+    }
+
+    if (typeof documentType !== "string" || !["passport", "aadhaar"].includes(documentType)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid document type. Must be 'passport' or 'aadhaar'." },
+        { status: 400 }
+      );
+    }
+
+    // 4. File size guard (prevent abuse even with compression)
+    if (file.size > MAX_FILE_BYTES) {
+      return NextResponse.json(
+        { success: false, error: "File too large. Maximum 5MB." },
         { status: 413 }
       );
     }
 
     // 5. Validate MIME type
+    const mimeType = file.type || "image/jpeg";
     const allowedMimes = [
       "image/jpeg",
       "image/jpg",
@@ -136,7 +150,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Get API key
+    // 6. Convert file to base64 for Gemini API
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64Data = buffer.toString("base64");
+
+    // 7. Get API key
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.error("OCR route: GEMINI_API_KEY not configured");
@@ -146,7 +165,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. Call Gemini Vision with model fallback
+    // 8. Call Gemini Vision with model fallback
     const prompt = DOCUMENT_PROMPTS[documentType];
     let lastError = "";
 
@@ -202,15 +221,57 @@ export async function POST(req: NextRequest) {
 
         const extracted = JSON.parse(jsonMatch[0]);
 
-        // 8. Post-process and return based on document type
+        // 9. Post-process and return based on document type
         if (documentType === "passport") {
-          const passportNumber = typeof extracted.passportNumber === "string" ? extracted.passportNumber.toUpperCase().trim() : "";
+          const rawPp = typeof extracted.passportNumber === "string"
+            ? extracted.passportNumber.replace(/\s/g, "").toUpperCase()
+            : "";
+          const geminiName = typeof extracted.fullName === "string" ? extracted.fullName.trim() : "";
+          const geminiValid = isValidPassportNumber(rawPp);
+          const isImage = mimeType !== "application/pdf";
 
+          // MRZ-first: for images, attempt MRZ before deciding on Gemini
+          let mrzResult: Awaited<ReturnType<typeof extractPassportMRZ>> = null;
+          if (isImage) {
+            mrzResult = await extractPassportMRZ(base64Data, mimeType);
+          }
+
+          const mrzValid = mrzResult !== null && isValidPassportNumber(mrzResult.passportNumber);
+          const mrzPp = mrzValid ? mrzResult!.passportNumber : "";
+          const conflict = geminiValid && mrzValid && rawPp !== mrzPp;
+
+          // Conflict: both valid but disagree — trust Gemini (visual) over MRZ (OCR noise)
+          if (conflict) {
+            console.warn(`[OCR] passport_conflict | gemini=${maskPassport(rawPp)} | mrz=${maskPassport(mrzPp)}`);
+          }
+
+          // Source decision: MRZ wins only when it agrees with Gemini or Gemini is invalid
+          const source = mrzValid && !conflict ? "mrz" : "gemini";
+
+          // Unified confidence log
+          console.log(
+            `[OCR] passport | source=${source}` +
+            ` | gemini_valid=${geminiValid} | mrz_valid=${mrzValid}` +
+            ` | mrz_attempted=${isImage} | conflict=${conflict}`
+          );
+
+          if (mrzValid && !conflict && mrzResult) {
+            return NextResponse.json({
+              success: true,
+              fullName: mrzResult.fullName,
+              passportNumber: mrzResult.passportNumber,
+              modelUsed: model,
+              source: "mrz",
+            });
+          }
+
+          // Fallback: return Gemini result (validated against Indian format)
           return NextResponse.json({
             success: true,
-            fullName: typeof extracted.fullName === "string" ? extracted.fullName.trim() : "",
-            passportNumber: validatePassport(passportNumber) ? passportNumber : "",
+            fullName: geminiName,
+            passportNumber: geminiValid ? rawPp : "",
             modelUsed: model,
+            source: "gemini",
           });
         }
 

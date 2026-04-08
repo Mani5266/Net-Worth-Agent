@@ -32,7 +32,7 @@ function parseFormData(raw: unknown): FormData {
 export async function saveCertificateDraft(formData: FormData): Promise<string> {
   const userId = await requireUserId();
 
-  // 1. Upsert Client (based on Passport Number, stored in pan_number column)
+  // 1. Upsert Client (based on user + passport number, stored in pan_number column)
   const { data: client, error: clientError } = await supabase
     .from("clients")
     .upsert({
@@ -40,7 +40,7 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
       salutation: formData.salutation,
       pan_number: formData.passportNumber.toUpperCase(),
       user_id: userId,
-    }, { onConflict: 'pan_number' })
+    }, { onConflict: 'user_id,pan_number' })
     .select()
     .single();
 
@@ -161,13 +161,14 @@ export async function renameCertificate(id: string, newName: string): Promise<vo
 
 /**
  * Uploads a document to Supabase Storage and records it in the DB.
+ * Returns the storage path and DB row ID (for later deletion).
  */
 export async function uploadDocument(
   certificateId: string,
   annexureType: string,
   category: string,
   file: File
-): Promise<string> {
+): Promise<{ path: string; documentId: string }> {
   const userId = await requireUserId();
   const fileName = `${Date.now()}-${file.name}`;
   const filePath = `${certificateId}/${annexureType}/${category}/${fileName}`;
@@ -179,15 +180,8 @@ export async function uploadDocument(
 
   if (uploadError) throw uploadError;
 
-  // 2. Get Signed URL (5 minutes)
-  const { data: signedData, error: signedError } = await supabase.storage
-    .from("networth-documents")
-    .createSignedUrl(filePath, 300);
-
-  if (signedError) throw signedError;
-
-  // 3. Save to DB
-  const { error: dbError } = await supabase.from("documents").insert({
+  // 2. Save metadata to DB (return the row id for future deletion)
+  const { data: row, error: dbError } = await supabase.from("documents").insert({
     certificate_id: certificateId,
     annexure_type: annexureType,
     category: category,
@@ -195,11 +189,15 @@ export async function uploadDocument(
     file_name: file.name,
     file_type: file.type,
     user_id: userId,
-  });
+  }).select("id").single();
 
-  if (dbError) throw dbError;
+  if (dbError) {
+    // Rollback: best-effort cleanup of the orphaned storage file
+    await supabase.storage.from("networth-documents").remove([filePath]).catch(() => {});
+    throw dbError;
+  }
 
-  return signedData.signedUrl;
+  return { path: filePath, documentId: row.id };
 }
 
 /**

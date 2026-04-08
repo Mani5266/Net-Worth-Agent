@@ -11,11 +11,7 @@ import type { ImmovableProperty } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseNum(val: string): number {
-  return parseFloat(val.replace(/,/g, "")) || 0;
-}
-
-/** Build the "Particulars" label for each property row in the amounts table */
+/** Build the "Particulars" label for each property row */
 function propertyRowLabel(
   person: string,
   address: string,
@@ -151,14 +147,40 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
   const addProperty = (person: string) => {
     const current = data.immovableProperties[person] ?? [];
     const newProp: ImmovableProperty = { propertyType: "", customType: "", address: "" };
-    updateField("immovableProperties", {
+    const updated = {
       ...data.immovableProperties,
-      [person]: [...current, newProp],
-    });
-    // Add a new row + FR entry for this property
-    const label = propertyRowLabel(person, "", data.immovableLabels[person] ?? "", data.fullName, "");
-    updateField("immovableRows", [...data.immovableRows, { label, inr: "" }]);
-    updateField("immovableFR", [...data.immovableFR, ""]);
+      [person]: [newProp, ...current],
+    };
+    updateField("immovableProperties", updated);
+
+    // Insert a blank row at the correct flat offset so existing amounts stay aligned
+    let insertAt = 0;
+    for (const p of selectedPersons) {
+      if (p === person) break;
+      insertAt += (data.immovableProperties[p] ?? []).length;
+    }
+    const newRows = [...data.immovableRows];
+    newRows.splice(insertAt, 0, { label: "", inr: "" });
+    updateField("immovableRows", newRows);
+
+    const newFR = [...data.immovableFR];
+    newFR.splice(insertAt, 0, "");
+    updateField("immovableFR", newFR);
+
+    // Re-key docs: shift all indices for this person up by 1
+    const updatedDocs = { ...data.immovableDocs };
+    for (let j = current.length; j >= 0; j--) {
+      const oldKey = `${person}:${j}`;
+      const newKey = `${person}:${j + 1}`;
+      if (updatedDocs[oldKey]) {
+        updatedDocs[newKey] = updatedDocs[oldKey];
+        delete updatedDocs[oldKey];
+      }
+    }
+    updateField("immovableDocs", updatedDocs);
+
+    // Rebuild labels
+    rebuildRowsFromProps(updated);
   };
 
   const removeProperty = (person: string, propIndex: number) => {
@@ -239,6 +261,14 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
   };
 
   const showForeign = isForeign && foreignRate != null && foreignRate > 0;
+
+  // ── Flat-index offset per person (maps person → starting index in immovableRows) ──
+  const personFlatOffset: Record<string, number> = {};
+  let _offset = 0;
+  for (const p of selectedPersons) {
+    personFlatOffset[p] = _offset;
+    _offset += (data.immovableProperties[p] ?? []).length;
+  }
 
   // ── Count total properties for the amounts table ────────────────────────
   const allProperties: { person: string; propIndex: number; prop: ImmovableProperty }[] = [];
@@ -362,18 +392,49 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                         />
                       </div>
 
-                      {/* Custom type (only for "Other") */}
-                      {prop.propertyType === "Other" && (
-                        <div className="flex flex-col gap-1">
-                          <Input
-                            label="Custom Property Type"
-                            placeholder="e.g. Agricultural Land"
-                            value={prop.customType}
-                            onChange={(e) => updateProperty(person, pIdx, "customType", e.target.value)}
-                          />
-                        </div>
-                      )}
+                      {/* Valuation amount — right of Property Type */}
+                      {(() => {
+                        const flatIdx = (personFlatOffset[person] ?? 0) + pIdx;
+                        const inrVal = data.immovableRows[flatIdx]?.inr ?? "";
+                        const foreignLabel = showForeign && foreignRate
+                          ? fmtForeignAmount(inrVal, foreignRate, currencyInfo)
+                          : "";
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                              Valuation Amount (INR) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={inrVal}
+                              onChange={(e) => updateRowInr(flatIdx, e.target.value)}
+                              placeholder="Enter amount in Rs."
+                              aria-label={`INR amount for property ${pIdx + 1} of ${person}`}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
+                                focus:outline-none focus:ring-2 focus:ring-navy-900/10 focus:border-navy-800
+                                transition-colors bg-white placeholder:text-slate-400"
+                            />
+                            {showForeign && foreignLabel && (
+                              <span className="text-[10px] text-navy-700 font-medium mt-0.5 block pl-0.5">
+                                ≈ {foreignLabel}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
+
+                    {/* Custom type (only for "Other") */}
+                    {prop.propertyType === "Other" && (
+                      <div className="mb-2 max-w-[calc(50%-0.375rem)]">
+                        <Input
+                          label="Custom Property Type"
+                          placeholder="e.g. Agricultural Land"
+                          value={prop.customType}
+                          onChange={(e) => updateProperty(person, pIdx, "customType", e.target.value)}
+                        />
+                      </div>
+                    )}
 
                     {/* Address input */}
                     <div className="mb-2">
@@ -391,7 +452,7 @@ export function StepImmovable({ certificateId }: StepImmovableProps) {
                       docs={data.immovableDocs[docKey] ?? []}
                       onAdd={(files) => addImmovableDocs(docKey, files, certificateId ?? undefined)}
                       onRemove={(i) => removeImmovableDoc(docKey, i)}
-                      hint="Sale deed, valuation report, or self-declaration — PDF or JPG"
+                      hint="Proof of valuation or self-certified declaration — PDF or JPG"
                     />
                   </div>
                 );

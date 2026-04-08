@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Section, Checkbox, Select, Input } from "@/components/ui";
 import { FileUpload } from "@/components/ui/FileUpload";
-import { SAVINGS_PERSONS, SAVINGS_CATEGORY_OPTIONS, SUPPORTING_DOCS } from "@/constants";
+import { SAVINGS_PERSONS, SAVINGS_CATEGORY_OPTIONS, ACCOUNT_NATURE_OPTIONS, SUPPORTING_DOCS } from "@/constants";
 import { useFormContext } from "@/hooks/useFormContext";
 import { fmtForeignAmount } from "@/lib/utils";
 import { Plus, Trash2, Landmark, Pin, PlusCircle, X } from "lucide-react";
@@ -11,8 +11,18 @@ import type { SavingsEntry } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseNum(val: string): number {
-  return parseFloat(val.replace(/,/g, "")) || 0;
+/** Build auto-generated description for Bank-Related Assets */
+function buildBankDescription(
+  accountNature: string,
+  personName: string,
+  bankName: string,
+  branch: string,
+): string {
+  const nature = accountNature || "___";
+  const name = personName.trim() || "[Applicant]";
+  const bank = bankName.trim() || "[Bank Name]";
+  const br = branch.trim() || "[Branch]";
+  return `Balance in the \u201C${nature}\u201D bank account name of Applicant \u2014 ${name}, held with the bank \u201C${bank}\u201D having its branch at \u201C${br}\u201D`;
 }
 
 /** Build the "Particulars" label for each savings row in the amounts table */
@@ -153,15 +163,44 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
 
   const addEntry = (person: string) => {
     const current = data.savingsEntries[person] ?? [];
-    const newEntry: SavingsEntry = { category: "", customCategory: "", description: "" };
-    updateField("savingsEntries", {
+    const newEntry: SavingsEntry = {
+      category: "", customCategory: "", description: "",
+      bankName: "", accountNature: "", bankBranch: "",
+    };
+    const updated = {
       ...data.savingsEntries,
-      [person]: [...current, newEntry],
-    });
-    // Add a new row + FR entry
-    const label = savingsRowLabel(person, newEntry, data.savingsLabels[person] ?? "", data.fullName);
-    updateField("savingsRows", [...(data.savingsRows ?? []), { label, inr: "" }]);
-    updateField("savingsFR", [...data.savingsFR, ""]);
+      [person]: [newEntry, ...current],
+    };
+    updateField("savingsEntries", updated);
+
+    // Insert a blank row at the correct flat offset so existing amounts stay aligned
+    let insertAt = 0;
+    for (const p of selectedPersons) {
+      if (p === person) break;
+      insertAt += (data.savingsEntries[p] ?? []).length;
+    }
+    const newRows = [...(data.savingsRows ?? [])];
+    newRows.splice(insertAt, 0, { label: "", inr: "" });
+    updateField("savingsRows", newRows);
+
+    const newFR = [...data.savingsFR];
+    newFR.splice(insertAt, 0, "");
+    updateField("savingsFR", newFR);
+
+    // Re-key docs: shift all indices for this person up by 1
+    const updatedDocs = { ...data.savingsDocs };
+    for (let j = current.length; j >= 0; j--) {
+      const oldKey = `${person}:${j}`;
+      const newKey = `${person}:${j + 1}`;
+      if (updatedDocs[oldKey]) {
+        updatedDocs[newKey] = updatedDocs[oldKey];
+        delete updatedDocs[oldKey];
+      }
+    }
+    updateField("savingsDocs", updatedDocs);
+
+    // Rebuild labels
+    rebuildRowsFromEntries(updated);
   };
 
   const removeEntry = (person: string, entryIndex: number) => {
@@ -194,7 +233,23 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
     const current = [...(data.savingsEntries[person] ?? [])];
     const entry = current[entryIndex];
     if (!entry) return;
-    current[entryIndex] = { ...entry, [field]: value };
+    const updatedEntry = { ...entry, [field]: value };
+
+    // Auto-populate description for Bank-Related Assets when a bank field changes
+    if (
+      updatedEntry.category === "Bank-Related Assets" &&
+      (field === "bankName" || field === "accountNature" || field === "bankBranch")
+    ) {
+      const personName = data.savingsLabels[person] ?? data.fullName ?? "";
+      updatedEntry.description = buildBankDescription(
+        updatedEntry.accountNature ?? "",
+        personName,
+        updatedEntry.bankName ?? "",
+        updatedEntry.bankBranch ?? "",
+      );
+    }
+
+    current[entryIndex] = updatedEntry;
     const updated = { ...data.savingsEntries, [person]: current };
     updateField("savingsEntries", updated);
 
@@ -250,6 +305,14 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
     entries.forEach((entry, i) => {
       allEntries.push({ person, entryIndex: i, entry });
     });
+  }
+
+  // ── Flat-index offset per person (maps person → starting index in savingsRows) ──
+  const personFlatOffset: Record<string, number> = {};
+  let _offset = 0;
+  for (const p of selectedPersons) {
+    personFlatOffset[p] = _offset;
+    _offset += (data.savingsEntries[p] ?? []).length;
   }
 
   return (
@@ -366,36 +429,115 @@ export function StepSavings({ certificateId }: StepSavingsProps) {
                         />
                       </div>
 
-                      {/* Custom category (only for "Other Additions") */}
-                      {entry.category === "Other Additions" && (
-                        <div className="flex flex-col gap-1">
-                          <Input
-                            label="Custom Category"
-                            placeholder="e.g. Chit Funds, Loans Given"
-                            value={entry.customCategory}
-                            onChange={(e) => updateEntry(person, eIdx, "customCategory", e.target.value)}
-                          />
-                        </div>
-                      )}
+                      {/* Valuation amount — right of Category */}
+                      {(() => {
+                        const flatIdx = (personFlatOffset[person] ?? 0) + eIdx;
+                        const inrVal = (data.savingsRows ?? [])[flatIdx]?.inr ?? "";
+                        const foreignLabel = showForeign && foreignRate
+                          ? fmtForeignAmount(inrVal, foreignRate, currencyInfo)
+                          : "";
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                              Amount (INR) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={inrVal}
+                              onChange={(e) => updateRowInr(flatIdx, e.target.value)}
+                              placeholder="Enter amount in Rs."
+                              aria-label={`INR amount for entry ${eIdx + 1} of ${person}`}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs w-full
+                                focus:outline-none focus:ring-2 focus:ring-sky-600/20 focus:border-sky-600
+                                transition-colors bg-white placeholder:text-slate-400"
+                            />
+                            {showForeign && foreignLabel && (
+                              <span className="text-[10px] text-sky-700 font-medium mt-0.5 block pl-0.5">
+                                ≈ {foreignLabel}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {/* Description input */}
-                    <div className="mb-2">
-                      <Input
-                        label="Description"
-                        placeholder={
-                          entry.category === "Bank-Related Assets"
-                            ? "e.g. SBI A/c No. XXXXXXXXX"
-                            : entry.category === "Insurance"
-                            ? "e.g. LIC Policy No. 12345678"
-                            : entry.category === "Investment Instruments"
-                            ? "e.g. Mutual Funds, PPF, NPS"
-                            : "e.g. Details of the savings item"
-                        }
-                        value={entry.description}
-                        onChange={(e) => updateEntry(person, eIdx, "description", e.target.value)}
-                      />
-                    </div>
+                    {/* Custom category (only for "Other Additions") */}
+                    {entry.category === "Other Additions" && (
+                      <div className="mb-2 max-w-[calc(50%-0.375rem)]">
+                        <Input
+                          label="Custom Category"
+                          placeholder="e.g. Chit Funds, Loans Given"
+                          value={entry.customCategory}
+                          onChange={(e) => updateEntry(person, eIdx, "customCategory", e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Bank-Related Assets: structured fields */}
+                    {entry.category === "Bank-Related Assets" && (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                          <div className="flex flex-col gap-1">
+                            <Input
+                              label="Name of the Bank"
+                              placeholder="e.g. State Bank of India"
+                              value={entry.bankName ?? ""}
+                              onChange={(e) => updateEntry(person, eIdx, "bankName", e.target.value)}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Select
+                              label="Nature of the Account"
+                              placeholder="Select account type..."
+                              options={ACCOUNT_NATURE_OPTIONS}
+                              value={entry.accountNature ?? ""}
+                              onChange={(e) => updateEntry(person, eIdx, "accountNature", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="mb-2 max-w-[calc(50%-0.375rem)]">
+                          <Input
+                            label="Branch"
+                            placeholder="e.g. Madhapur, Hyderabad"
+                            value={entry.bankBranch ?? ""}
+                            onChange={(e) => updateEntry(person, eIdx, "bankBranch", e.target.value)}
+                          />
+                        </div>
+                        {/* Auto-generated description (editable) */}
+                        <div className="mb-2">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">
+                            Description <span className="text-[10px] font-normal text-slate-400">(auto-generated, editable)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={entry.description}
+                            onChange={(e) => updateEntry(person, eIdx, "description", e.target.value)}
+                            placeholder="Will auto-populate from bank details above"
+                            className="px-2.5 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-xs w-full
+                              focus:outline-none focus:ring-2 focus:ring-sky-600/20 focus:border-sky-600
+                              transition-colors placeholder:text-slate-400"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Non-bank categories: generic description input */}
+                    {entry.category !== "Bank-Related Assets" && (
+                      <div className="mb-2">
+                        <Input
+                          label="Description"
+                          placeholder={
+                            entry.category === "Insurance"
+                              ? "e.g. LIC Policy No. 12345678"
+                              : entry.category === "Investment Instruments"
+                              ? "e.g. Mutual Funds, PPF, NPS"
+                              : "e.g. Details of the savings item"
+                          }
+                          value={entry.description}
+                          onChange={(e) => updateEntry(person, eIdx, "description", e.target.value)}
+                        />
+                      </div>
+                    )}
 
                     {/* Document upload */}
                     <FileUpload

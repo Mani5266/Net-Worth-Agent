@@ -20,23 +20,29 @@ export function StepPurpose() {
           placeholder="Choose purpose..."
         />
 
+        {/* Country selection — always shown so exchange rate can be computed */}
+        <Select
+          label="Country for which the Net Worth is being prepared"
+          required
+          value={data.country}
+          onChange={(e) => {
+            updateField("country", e.target.value);
+            updateField("exchangeRate", "");
+          }}
+          options={COUNTRIES}
+          placeholder="Select country..."
+        />
+
         {isForeign && (
-          <>
-            <Select
-              label="Destination Country"
-              required
-              value={data.country}
-              onChange={(e) => {
-                updateField("country", e.target.value);
-                updateField("exchangeRate", "");
-              }}
-              options={COUNTRIES}
-              placeholder="Select country..."
-            />
-            <InfoBadge>
-              Dual-currency columns (INR + Foreign) will appear in the certificate for this purpose.
-            </InfoBadge>
-          </>
+          <InfoBadge>
+            Dual-currency columns (INR + Foreign) will appear in the certificate for this purpose.
+          </InfoBadge>
+        )}
+
+        {!isForeign && data.country && (
+          <InfoBadge>
+            The exchange rate for <strong>{data.country}</strong> will be fetched automatically (as on the certificate date) and used for currency conversion in the certificate.
+          </InfoBadge>
         )}
 
         <Input

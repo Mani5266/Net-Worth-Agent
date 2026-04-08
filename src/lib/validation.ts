@@ -153,16 +153,109 @@ export function validateFullForm(data: FormData): ValidationResult {
     errors["_annexures"] = "At least one annexure must have financial data";
   }
 
-  // 6. Country required for foreign purposes
-  const foreignPurposes = ["travel_visa", "study_loan", "foreign_collab"];
-  if (foreignPurposes.includes(data.purpose) && !data.country.trim()) {
-    errors["country"] = "Country is required for this purpose";
+  // 6. Country is always required
+  if (!data.country.trim()) {
+    errors["country"] = "Country is required for generating the net worth certificate";
   }
 
   return {
     success: Object.keys(errors).length === 0,
     errors,
   };
+}
+
+/**
+ * Validates that all declared assets/entries have amounts filled.
+ * Returns a list of human-readable warnings for items missing amounts.
+ * Used to gate Copy/Print actions on the Certificate step.
+ */
+export function validateAmountsForCertificate(data: FormData): string[] {
+  const warnings: string[] = [];
+
+  // Check income rows
+  if (data.incomeTypes.length > 0) {
+    data.incomeTypes.forEach((person, i) => {
+      const inr = data.incomeRows[i]?.inr?.trim();
+      if (!inr) {
+        const name = data.incomeLabels[person]?.trim() || person;
+        warnings.push(`Annexure I: Income amount missing for ${name}`);
+      }
+    });
+  }
+
+  // Check immovable properties (new model)
+  const hasNewImmovable = Object.keys(data.immovableProperties ?? {}).length > 0;
+  if (hasNewImmovable) {
+    let flatIdx = 0;
+    for (const person of data.immovableTypes) {
+      const props = data.immovableProperties[person] ?? [];
+      const personName = data.immovableLabels[person]?.trim() || person;
+      for (let j = 0; j < props.length; j++) {
+        const inr = data.immovableRows[flatIdx]?.inr?.trim();
+        if (!inr) {
+          const propType = props[j]?.propertyType || `Property ${j + 1}`;
+          warnings.push(`Annexure II: Amount missing for ${personName} \u2014 ${propType}`);
+        }
+        flatIdx++;
+      }
+    }
+  } else if (data.immovableRows.length > 0) {
+    data.immovableRows.forEach((row, i) => {
+      if (!row.inr?.trim()) {
+        warnings.push(`Annexure II: Amount missing for row ${i + 1}`);
+      }
+    });
+  }
+
+  // Check movable assets (new model)
+  const hasNewMovable = Object.keys(data.movableAssets ?? {}).length > 0;
+  if (hasNewMovable) {
+    let flatIdx = 0;
+    for (const person of data.movableTypes) {
+      const assets = data.movableAssets[person] ?? [];
+      const personName = data.movableLabels[person]?.trim() || person;
+      for (let j = 0; j < assets.length; j++) {
+        const inr = data.movableRows[flatIdx]?.inr?.trim();
+        if (!inr) {
+          const assetType = assets[j]?.assetType || `Asset ${j + 1}`;
+          warnings.push(`Annexure III: Amount missing for ${personName} \u2014 ${assetType}`);
+        }
+        flatIdx++;
+      }
+    }
+  } else if (data.movableRows.length > 0) {
+    data.movableRows.forEach((row, i) => {
+      if (!row.inr?.trim()) {
+        warnings.push(`Annexure III: Amount missing for row ${i + 1}`);
+      }
+    });
+  }
+
+  // Check savings entries (new model)
+  const hasNewSavings = Object.keys(data.savingsEntries ?? {}).length > 0;
+  if (hasNewSavings) {
+    let flatIdx = 0;
+    for (const person of data.savingsTypes) {
+      const entries = data.savingsEntries[person] ?? [];
+      const personName = data.savingsLabels[person]?.trim() || person;
+      for (let j = 0; j < entries.length; j++) {
+        const inr = (data.savingsRows ?? [])[flatIdx]?.inr?.trim();
+        if (!inr) {
+          const cat = entries[j]?.category || `Entry ${j + 1}`;
+          warnings.push(`Annexure IV: Amount missing for ${personName} \u2014 ${cat}`);
+        }
+        flatIdx++;
+      }
+    }
+  } else if ((data.savingsRows ?? []).length > 0) {
+    (data.savingsRows ?? []).forEach((row, i) => {
+      if (!row.inr?.trim()) {
+        warnings.push(`Annexure IV: Amount missing for row ${i + 1}`);
+      }
+    });
+  }
+
+  return warnings;
 }
 
 /**

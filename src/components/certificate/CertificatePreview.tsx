@@ -111,12 +111,12 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
           const personName = data.incomeLabels[person]?.trim()
             || (person === "Self" ? (data.fullName || "[Name]") : "[Name]");
           const base = person === "Self"
-            ? "Income of the Applicant"
-            : `Income of the Applicant\u2019s ${person}`;
+            ? "Annual Income of the Applicant"
+            : `Annual Income of the Applicant\u2019s ${person}`;
           const label = `${base} \u2013 ${personName} for the Assessment year ${ay}`;
           return { label, inr: data.incomeRows[i]?.inr ?? "" };
         })
-      : [{ label: "Income of the Applicant", inr: "" }];
+      : [{ label: "Annual Income of the Applicant", inr: "" }];
 
     // Immovable rows are now pre-built with person-based labels by StepImmovable.
     // If immovableProperties exist (new model), use immovableRows directly.
@@ -406,7 +406,7 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
         <div className="print-signature-block" style={{ display: "flex", justifyContent: "flex-start", marginTop: 36 }}>
           <div>
             <p style={{ margin: "0 0 2px" }}><strong>For {data.firmName || "[Firm Name]"},</strong></p>
-            <p style={{ margin: "0 0 2px" }}>{data.firmType || "Chartered Accountants"},</p>
+            <p style={{ margin: "0 0 2px" }}>Chartered Accountants,</p>
             <p style={{ margin: "0 0 18px" }}>FRN {data.firmFRN || "[FRN]"}</p>
             <p style={{ margin: "0 0 2px" }}><strong>{data.signatoryName || "[Signatory Name]"}</strong></p>
             <p style={{ margin: "0 0 2px" }}>{data.signatoryTitle || "[Designation]"}</p>

@@ -42,3 +42,9 @@ test-output.css
 build-output.txt
 build-verify-output.txt
 nul
+
+# agent/IDE config
+.opencode/
+
+# large binary files
+eng.traineddata

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button, Input } from "@/components/ui";
 import { Sidebar } from "@/components/Sidebar";
@@ -18,8 +19,8 @@ import { AuditLog } from "@/components/AuditLog";
 import { FormDataProvider, useFormContext } from "@/hooks/useFormContext";
 import { INITIAL_STATE } from "@/hooks/useFormData";
 import { STEPS } from "@/constants";
-import { buildCertificateText } from "@/lib/utils";
-import { validateFormStep, getValidationMessages } from "@/lib/validation";
+import { buildCertificateText, computeTotals, formatINR, parseAmount } from "@/lib/utils";
+import { validateFormStep, getValidationMessages, validateAmountsForCertificate } from "@/lib/validation";
 import {
   saveCertificateDraft,
   updateCertificateDraft,
@@ -65,6 +66,7 @@ function WizardShell() {
   const [step, setStep] = useState(0);
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [amountWarnings, setAmountWarnings] = useState<string[]>([]);
   const certRef = useRef<HTMLDivElement>(null);
 
   // Restore saved step from localStorage on mount, then persist on change
@@ -129,8 +131,10 @@ function WizardShell() {
           const parsed = JSON.parse(resumeData);
           if (parsed.purpose !== undefined) {
             setData(parsed);
-            setCertificateId(resumeId);
-            localStorage.setItem("networth_current_id", resumeId);
+            if (resumeId !== "ai-prefill") {
+              setCertificateId(resumeId);
+              localStorage.setItem("networth_current_id", resumeId);
+            }
             if (viewOnly === "true") setStep(6);
             return;
           }
@@ -268,6 +272,15 @@ function WizardShell() {
 
   // ── Copy & Print ─────────────────────────────────────────────────────────
 
+  // Recompute amount warnings when on Certificate step
+  useEffect(() => {
+    if (step === 7) {
+      setAmountWarnings(validateAmountsForCertificate(data));
+    } else {
+      setAmountWarnings([]);
+    }
+  }, [step, data]);
+
   const copyText = useCallback(() => {
     const text = buildCertificateText(data);
     navigator.clipboard.writeText(text).then(() => {
@@ -305,14 +318,40 @@ function WizardShell() {
                 Net Worth Certificate
               </h2>
               <div className="flex gap-2 flex-wrap">
-                <Button variant="secondary" size="sm" onClick={copyText}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={copyText}
+                  disabled={amountWarnings.length > 0}
+                  title={amountWarnings.length > 0 ? "Fix missing amounts first" : undefined}
+                >
                   {copied ? "Copied!" : "Copy Text"}
                 </Button>
-                <Button variant="secondary" size="sm" onClick={printCertificate}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={printCertificate}
+                  disabled={amountWarnings.length > 0}
+                  title={amountWarnings.length > 0 ? "Fix missing amounts first" : undefined}
+                >
                   Print
                 </Button>
               </div>
             </div>
+
+            {/* Amount warnings banner */}
+            {amountWarnings.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 no-print">
+                <p className="text-sm font-semibold text-red-800 mb-2">
+                  Missing amounts — fix before generating certificate:
+                </p>
+                <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
+                  {amountWarnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* UDIN — collected at the end after CA signs */}
             <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 mb-6 no-print">
@@ -324,6 +363,124 @@ function WizardShell() {
                 onChange={(e) => updateField("udin", e.target.value)}
               />
             </div>
+
+            {/* Self-review summary (collapsible) */}
+            <details className="mb-6 no-print border border-slate-200 rounded-xl bg-white">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-navy-950 select-none hover:bg-slate-50 rounded-xl">
+                Review Data Summary
+              </summary>
+              <div className="px-4 pb-4 pt-2 text-sm text-slate-700 space-y-4">
+                {/* Applicant */}
+                <div>
+                  <h4 className="font-semibold text-navy-900 mb-1">Applicant</h4>
+                  <p>{data.salutation} {data.fullName || "—"} &middot; Passport: {data.passportNumber || "—"}</p>
+                  <p>Purpose: {data.purpose || "—"} &middot; Country: {data.country || "—"} &middot; Date: {data.certDate || "—"}</p>
+                </div>
+
+                {/* Annexure I — Income */}
+                {data.incomeTypes.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-navy-900 mb-1">Annexure I — Income</h4>
+                    <table className="w-full text-xs border-collapse">
+                      <tbody>
+                        {data.incomeTypes.map((person, i) => {
+                          const name = data.incomeLabels[person]?.trim() || (person === "Self" ? data.fullName : person);
+                          const inr = data.incomeRows[i]?.inr?.trim();
+                          return (
+                            <tr key={i} className="border-b border-slate-100">
+                              <td className="py-1 pr-2">{person} — {name}</td>
+                              <td className="py-1 text-right font-mono">{inr ? formatINR(parseAmount(inr)) : <span className="text-red-500">Missing</span>}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr className="font-semibold">
+                          <td className="py-1 pr-2">Total</td>
+                          <td className="py-1 text-right font-mono">{formatINR(computeTotals(data).incomeINR)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Annexure II — Immovable */}
+                {data.immovableRows.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-navy-900 mb-1">Annexure II — Immovable Assets</h4>
+                    <table className="w-full text-xs border-collapse">
+                      <tbody>
+                        {data.immovableRows.map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1 pr-2 max-w-[300px] truncate">{row.label || `Row ${i + 1}`}</td>
+                            <td className="py-1 text-right font-mono">{row.inr?.trim() ? formatINR(parseAmount(row.inr)) : <span className="text-red-500">Missing</span>}</td>
+                          </tr>
+                        ))}
+                        <tr className="font-semibold">
+                          <td className="py-1 pr-2">Total</td>
+                          <td className="py-1 text-right font-mono">{formatINR(computeTotals(data).immovableINR)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Annexure III — Movable */}
+                {data.movableRows.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-navy-900 mb-1">Annexure III — Movable Properties</h4>
+                    <table className="w-full text-xs border-collapse">
+                      <tbody>
+                        {data.movableRows.map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1 pr-2 max-w-[300px] truncate">{row.label || `Row ${i + 1}`}</td>
+                            <td className="py-1 text-right font-mono">{row.inr?.trim() ? formatINR(parseAmount(row.inr)) : <span className="text-red-500">Missing</span>}</td>
+                          </tr>
+                        ))}
+                        <tr className="font-semibold">
+                          <td className="py-1 pr-2">Total</td>
+                          <td className="py-1 text-right font-mono">{formatINR(computeTotals(data).movableINR)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Annexure IV — Savings */}
+                {(data.savingsRows ?? []).length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-navy-900 mb-1">Annexure IV — Current Savings</h4>
+                    <table className="w-full text-xs border-collapse">
+                      <tbody>
+                        {(data.savingsRows ?? []).map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1 pr-2 max-w-[300px] truncate">{row.label || `Row ${i + 1}`}</td>
+                            <td className="py-1 text-right font-mono">{row.inr?.trim() ? formatINR(parseAmount(row.inr)) : <span className="text-red-500">Missing</span>}</td>
+                          </tr>
+                        ))}
+                        <tr className="font-semibold">
+                          <td className="py-1 pr-2">Total</td>
+                          <td className="py-1 text-right font-mono">{formatINR(computeTotals(data).savingsINR)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Grand Total */}
+                <div className="pt-2 border-t border-slate-300">
+                  <p className="font-bold text-navy-950">
+                    Grand Total Net Worth: {formatINR(computeTotals(data).grandINR)}
+                  </p>
+                </div>
+
+                {/* Signatory */}
+                <div>
+                  <h4 className="font-semibold text-navy-900 mb-1">Signatory</h4>
+                  <p>{data.firmName || "—"}, Chartered Accountants, FRN {data.firmFRN || "—"}</p>
+                  <p>{data.signatoryName || "—"} &middot; {data.signatoryTitle || "—"} &middot; M.No. {data.membershipNo || "—"}</p>
+                  <p>Place: {data.signPlace || "—"}</p>
+                </div>
+              </div>
+            </details>
 
             <div className="print-full">
               <CertificatePreview ref={certRef} data={data} />
@@ -358,9 +515,17 @@ function WizardShell() {
               <h1 className="text-3xl font-black text-navy-950 tracking-tight">
                 Net Worth Certificate
               </h1>
-              <p className="text-sm text-slate-500 mt-1">
-                Fill in the details below to generate your certificate
-              </p>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-sm text-slate-500">
+                  Fill in the details below to generate your certificate
+                </p>
+                <Link
+                  href="/ai-intake"
+                  className="text-xs font-semibold text-gold-600 hover:text-gold-700 whitespace-nowrap transition-colors"
+                >
+                  or fill with AI
+                </Link>
+              </div>
             </div>
 
             {/* Progress Tabs */}

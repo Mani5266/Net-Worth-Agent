@@ -277,17 +277,41 @@ export function resolveLabel(defaultLabel: string, customLabel?: string): string
 export function buildMovableRows(d: FormData): AnnexureRow[] {
   const rows: AnnexureRow[] = [];
 
-  d.movableTypes.forEach((type) => {
-    let label = d.movableLabels?.[type]?.trim() || "Movable Asset";
-    if (type === "Gold & Jewellery") {
-      const grams = d.goldGrams || "___";
-      const karat = d.goldKarat || "22K";
-      label = `Gold and Jewellery ornaments weighing ${grams} gms (${karat}) (In the Name of the Applicant)`;
-      const sub = d.movableLabels?.["Gold & Jewellery"]?.trim();
-      if (sub) label += ` \u2014 ${sub}`;
+  // New person-based model: iterate structured assets for accurate labels
+  const hasNewModel = Object.keys(d.movableAssets ?? {}).length > 0;
+  if (hasNewModel) {
+    for (const person of d.movableTypes) {
+      const assets = d.movableAssets[person] ?? [];
+      const personName = d.movableLabels?.[person]?.trim() || (person === "Self" ? d.fullName : person);
+      for (const asset of assets) {
+        let label: string;
+        if (asset.assetType === "Gold & Jewellery") {
+          const grams = asset.goldGrams?.trim() || "___";
+          const karat = asset.goldKarat || "22K";
+          label = `Gold and Jewellery ornaments weighing ${grams} gms (${karat})`;
+        } else {
+          label = asset.description?.trim() || asset.assetType || "Movable Asset";
+        }
+        const suffix = person === "Self"
+          ? ` in the name of Applicant \u2014 ${personName}`
+          : ` in the name of Applicant\u2019s ${person} \u2014 ${personName}`;
+        rows.push({ label: label + suffix, inr: "" });
+      }
     }
-    rows.push({ label, inr: "" });
-  });
+  } else {
+    // Legacy: old category-based model (for backward compat with old drafts)
+    d.movableTypes.forEach((type) => {
+      let label = d.movableLabels?.[type]?.trim() || "Movable Asset";
+      if (type === "Gold & Jewellery") {
+        const grams = d.goldGrams || "___";
+        const karat = d.goldKarat || "22K";
+        label = `Gold and Jewellery ornaments weighing ${grams} gms (${karat}) (In the Name of the Applicant)`;
+        const sub = d.movableLabels?.["Gold & Jewellery"]?.trim();
+        if (sub) label += ` \u2014 ${sub}`;
+      }
+      rows.push({ label, inr: "" });
+    });
+  }
 
   if (rows.length === 0) {
     rows.push({ label: "Specify movable asset details", inr: "" });
@@ -415,7 +439,12 @@ export function buildCertificateText(d: FormData): string {
     ? d.supportingDocs
     : ["Income tax return copies of Applicant.", "Valuation/self-declaration documents of immovable properties."];
   const otherDocs = (d.otherSupportingDocs ?? []).filter((doc: string) => doc.trim() !== "");
-  const allDocs = [...docs, ...otherDocs];
+  // Include uploaded file names from all annexures (matches CertificatePreview.tsx)
+  const incomeFileNames = Object.values(d.incomeDocs).flatMap(docs => docs.map(doc => doc.name));
+  const immovableFileNames = Object.values(d.immovableDocs).flatMap(docs => docs.map(doc => doc.name));
+  const movableFileNames = Object.values(d.movableDocs).flatMap(docs => docs.map(doc => doc.name));
+  const savingsFileNames = Object.values(d.savingsDocs).flatMap(docs => docs.map(doc => doc.name));
+  const allDocs = [...docs, ...otherDocs, ...incomeFileNames, ...immovableFileNames, ...movableFileNames, ...savingsFileNames];
 
   const pronoun = getPossessivePronoun(d.salutation);
 
@@ -453,8 +482,8 @@ export function buildCertificateText(d: FormData): string {
     d.incomeTypes.forEach((person, i) => {
       const personName = d.incomeLabels[person]?.trim() || (person === "Self" ? (d.fullName || "[Name]") : "[Name]");
       const base = person === "Self"
-        ? "Income of the Applicant"
-        : `Income of the Applicant\u2019s ${person}`;
+        ? "Annual Income of the Applicant"
+        : `Annual Income of the Applicant\u2019s ${person}`;
       const label = `${base} \u2013 ${personName} for the Assessment year ${ay}`;
       const inr = d.incomeRows[i]?.inr ?? "";
       text += `${label.padEnd(52)} | ${inr ? formatINR(parseAmount(inr)) : ""}\n`;
@@ -516,7 +545,7 @@ export function buildCertificateText(d: FormData): string {
   }
   text += `Total                                               | ${formatINR(totals.savingsINR)}\n`;
 
-  text += `\nFor ${d.firmName || "[Firm Name]"},\n${d.firmType || "Chartered Accountants"},\nFRN ${d.firmFRN || "[FRN]"}\n\n`;
+  text += `\nFor ${d.firmName || "[Firm Name]"},\nChartered Accountants,\nFRN ${d.firmFRN || "[FRN]"}\n\n`;
   text += `${d.signatoryName || "[Signatory Name]"}\n${d.signatoryTitle || "[Designation]"}\nMembership No. ${d.membershipNo || "[Membership No.]"}\n`;
   text += `Date: ${dateStr}\nPlace: ${d.signPlace || "[Place]"}\nUDIN: ${d.udin || "__________________________"}\n`;
 

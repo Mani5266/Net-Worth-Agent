@@ -25,11 +25,11 @@ function getRedis(): Redis | null {
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 
 /**
- * /api/ocr — 5 requests per hour per identifier (user ID or IP).
- * Strict limit to prevent abuse of document processing.
+ * /api/ocr — 20 requests per hour per identifier (user ID or IP).
+ * Allows passport + Aadhaar uploads for self + family, plus retries.
  */
 export const ocrRateLimit = createLimiter("ocr", {
-  requests: 5,
+  requests: 20,
   window: "1 h",
 });
 
@@ -55,6 +55,24 @@ export const exchangeRateLimit = createLimiter("exchange-rate", {
  * Lightweight reference data endpoint.
  */
 export const goldPriceRateLimit = createLimiter("gold-price", {
+  requests: 30,
+  window: "1 h",
+});
+
+/**
+ * /api/ai-intake — 30 requests per hour per identifier.
+ * Multi-turn chat for AI-assisted form filling (typical session ~10-15 messages).
+ */
+export const aiIntakeRateLimit = createLimiter("ai-intake", {
+  requests: 30,
+  window: "1 h",
+});
+
+/**
+ * /api/stt — 30 requests per hour per identifier.
+ * Voice-to-text transcription (pairs 1:1 with AI intake calls).
+ */
+export const sttRateLimit = createLimiter("stt", {
   requests: 30,
   window: "1 h",
 });

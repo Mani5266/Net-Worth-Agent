@@ -11,8 +11,8 @@ import { Pin } from "lucide-react";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function personRowLabel(person: string): string {
-  if (person === "Self") return "Income of the Applicant";
-  return `Income of the Applicant's ${person}`;
+  if (person === "Self") return "Annual Income of the Applicant";
+  return `Annual Income of the Applicant's ${person}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -191,8 +191,8 @@ export function StepIncome({ certificateId }: StepIncomeProps) {
                       <div className="flex flex-col gap-1.5 pr-3 self-center">
                         <span className="text-sm text-slate-700 leading-tight">
                           {person === "Self"
-                            ? "Income of the Applicant"
-                            : `Income of the Applicant\u2019s ${person}`}
+                            ? "Annual Income of the Applicant"
+                            : `Annual Income of the Applicant\u2019s ${person}`}
                         </span>
                         <input
                           type="text"

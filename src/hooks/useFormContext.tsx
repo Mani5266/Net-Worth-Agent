@@ -76,9 +76,10 @@ export function FormDataProvider({ children }: FormDataProviderProps) {
   const { auditEntries, recordChanges, clearAudit, setBaseline } = useAuditTrail();
 
   const isForeign = isForeignPurpose(form.data.purpose);
-  const currencyInfo = isForeign ? getCurrencyInfo(form.data.country) : DEFAULT_CURRENCY;
+  // Always resolve currency info from the selected country (not just for foreign purposes)
+  const currencyInfo = form.data.country ? getCurrencyInfo(form.data.country) : DEFAULT_CURRENCY;
 
-  // Fetch live exchange rate for the selected currency
+  // Always fetch live exchange rate when a country is selected
   const { rate: liveRate, currencyCode: rateCurrency, loading: rateLoading } = useExchangeRate(currencyInfo);
 
   // Manual override takes priority over live rate

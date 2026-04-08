@@ -18,6 +18,7 @@ import {
   FileText,
   CheckCircle2,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -99,12 +100,23 @@ export function Sidebar({
           onNewCertificate();
           setMobileOpen(false);
         }}
-        className="w-full flex items-center justify-center gap-2 mb-8 py-3 px-4 rounded-xl font-semibold text-sm
+        className="w-full flex items-center justify-center gap-2 mb-3 py-3 px-4 rounded-xl font-semibold text-sm
           text-navy-950 bg-white hover:bg-slate-100 shadow-md shadow-black/10
           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:ring-offset-2 focus:ring-offset-navy-900"
       >
         <Plus className="w-4 h-4" /> New Certificate
       </button>
+
+      {/* AI Intake */}
+      <Link
+        href="/ai-intake"
+        onClick={() => setMobileOpen(false)}
+        className="w-full flex items-center justify-center gap-2 mb-8 py-2.5 px-4 rounded-xl font-semibold text-sm
+          text-gold-400 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/20
+          transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:ring-offset-2 focus:ring-offset-navy-900"
+      >
+        <Sparkles className="w-4 h-4" /> Fill with AI
+      </Link>
 
       {/* Certificate List */}
       <div className="flex-1 overflow-y-auto">
