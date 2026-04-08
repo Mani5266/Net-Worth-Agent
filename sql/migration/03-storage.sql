@@ -52,7 +52,7 @@
     USING (
       bucket_id = 'networth-documents'
       AND owner_id IS NOT NULL
-      AND owner_id = auth.uid()
+      AND owner_id = auth.uid()::text
     );
 
   -- Only file owner can delete their files
@@ -63,7 +63,7 @@
     USING (
       bucket_id = 'networth-documents'
       AND owner_id IS NOT NULL
-      AND owner_id = auth.uid()
+      AND owner_id = auth.uid()::text
     );
 
 

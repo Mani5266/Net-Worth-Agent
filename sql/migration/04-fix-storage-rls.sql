@@ -45,7 +45,7 @@ CREATE POLICY "Authenticated users can read documents"
   USING (
     bucket_id = 'networth-documents'
     AND owner_id IS NOT NULL
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
   );
 
 -- DELETE: Only the file owner can delete their files
@@ -55,7 +55,7 @@ CREATE POLICY "Authenticated users can delete documents"
   USING (
     bucket_id = 'networth-documents'
     AND owner_id IS NOT NULL
-    AND owner_id = auth.uid()
+    AND owner_id = auth.uid()::text
   );
 
 
