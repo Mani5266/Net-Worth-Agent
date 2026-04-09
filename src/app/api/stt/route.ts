@@ -6,6 +6,7 @@ import {
   rateLimitResponse,
 } from "@/lib/ratelimit";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { logUsage } from "@/lib/usage";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ Rules:
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now(); // PERF FIX 4: request timing
   try {
     // 0. Auth check — hard failure, no fallbacks
     const supabase = createSupabaseServerClient();
@@ -36,8 +38,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Rate limiting
-    const identifier = getClientIdentifier(req);
+    // 1. Rate limiting (keyed by user ID, not IP)
+    const identifier = getClientIdentifier(req, user.id);
     const rateResult = await sttRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -105,36 +107,56 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Call Gemini 2.0 Flash
-    const aiRes = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: STT_PROMPT },
-                {
-                  inlineData: {
-                    mimeType: file.type,
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.0,
-            maxOutputTokens: 512,
+    // 6. Call Gemini 2.0 Flash (with timeout to prevent hanging)
+    const tGemini = Date.now(); // PERF FIX 4: Gemini call timing
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    let aiRes: Response;
+    try {
+      aiRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
-        }),
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: STT_PROMPT },
+                  {
+                    inlineData: {
+                      mimeType: file.type,
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.0,
+              maxOutputTokens: 512,
+            },
+          }),
+        }
+      );
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+        console.error("[STT] Gemini request timed out (15s)");
+        return NextResponse.json(
+          { success: false, error: "Transcription service timed out. Please try again." },
+          { status: 504 }
+        );
       }
-    );
+      throw fetchErr;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
@@ -154,7 +176,7 @@ export async function POST(req: NextRequest) {
       console.warn("[STT] Gemini returned empty transcription");
       return NextResponse.json(
         { success: false, error: "Couldn't understand audio. Please try again." },
-        { status: 200 }
+        { status: 422 }
       );
     }
 
@@ -168,9 +190,16 @@ export async function POST(req: NextRequest) {
     }
 
     // PII-safe response logging — length only, never content
-    console.log("[STT_RESPONSE]", { transcriptLength: text.length });
+    console.log("[STT_RESPONSE]", {
+      transcriptLength: text.length,
+      geminiMs: Date.now() - tGemini,
+      totalMs: Date.now() - t0,
+    });
 
-    // 9. Return
+    // 9. Usage tracking (fire-and-forget)
+    logUsage(user.id, "stt", { fileSize: file.size });
+
+    // 10. Return
     return NextResponse.json({ success: true, text });
   } catch (error) {
     console.error("[STT] Unexpected error:", error);

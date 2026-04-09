@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { FormDataSchema } from "./schemas";
 import { INITIAL_STATE } from "@/hooks/useFormData";
+import { logAudit, snapshotVersion } from "./audit";
 import type { FormData, CertificateRecord, DocumentRecord } from "@/types";
 
 /**
@@ -65,6 +66,16 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
 
   if (certError) throw certError;
 
+  // Phase 5: Audit log — record certificate creation
+  logAudit(
+    userId,
+    "create",
+    "certificate",
+    cert.id,
+    null,
+    formData as unknown as Record<string, unknown>
+  );
+
   return cert.id;
 }
 
@@ -72,6 +83,20 @@ export async function saveCertificateDraft(formData: FormData): Promise<string> 
  * Updates an existing certificate draft.
  */
 export async function updateCertificateDraft(id: string, formData: FormData): Promise<void> {
+  const userId = await requireUserId();
+
+  // Phase 5: Fetch old form_data for audit log + version snapshot
+  const { data: oldCert } = await supabase
+    .from("certificates")
+    .select("form_data")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .single();
+
+  if (oldCert) {
+    snapshotVersion(userId, id, oldCert.form_data as Record<string, unknown>);
+  }
+
   const { error } = await supabase
     .from("certificates")
     .update({
@@ -79,19 +104,32 @@ export async function updateCertificateDraft(id: string, formData: FormData): Pr
       nickname: formData.nickname,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", userId);
 
   if (error) throw error;
+
+  // Phase 5: Audit log — record certificate update
+  logAudit(
+    userId,
+    "update",
+    "certificate",
+    id,
+    oldCert?.form_data as Record<string, unknown> ?? null,
+    formData as unknown as Record<string, unknown>
+  );
 }
 
 /**
  * Fetches a certificate by ID.
  */
 export async function getCertificate(id: string): Promise<FormData> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from("certificates")
     .select("form_data")
     .eq("id", id)
+    .eq("user_id", userId)
     .single();
 
   if (error) throw error;
@@ -102,6 +140,7 @@ export async function getCertificate(id: string): Promise<FormData> {
  * Fetches all certificates (history page).
  */
 export async function getAllCertificates(): Promise<CertificateRecord[]> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from("certificates")
     .select(`
@@ -115,6 +154,7 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
         full_name
       )
     `)
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -134,16 +174,23 @@ export async function getAllCertificates(): Promise<CertificateRecord[]> {
  * Renames a certificate (updates both column and JSON).
  */
 export async function renameCertificate(id: string, newName: string): Promise<void> {
+  const userId = await requireUserId();
   const { data: cert, error: fetchError } = await supabase
     .from("certificates")
     .select("form_data")
     .eq("id", id)
+    .eq("user_id", userId)
     .single();
 
   if (fetchError) throw fetchError;
 
+  const oldFormData = cert.form_data as Record<string, unknown>;
+
+  // Phase 5: Snapshot the current version before rename
+  snapshotVersion(userId, id, oldFormData);
+
   const updatedFormData = {
-    ...(cert.form_data as Record<string, unknown>),
+    ...oldFormData,
     nickname: newName
   };
 
@@ -154,15 +201,29 @@ export async function renameCertificate(id: string, newName: string): Promise<vo
       form_data: updatedFormData,
       updated_at: new Date().toISOString()
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", userId);
 
   if (updateError) throw updateError;
+
+  // Phase 5: Audit log — record certificate rename
+  logAudit(userId, "rename", "certificate", id, oldFormData, updatedFormData);
 }
 
 /**
  * Uploads a document to Supabase Storage and records it in the DB.
  * Returns the storage path and DB row ID (for later deletion).
  */
+
+const UPLOAD_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const UPLOAD_ALLOWED_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+
 export async function uploadDocument(
   certificateId: string,
   annexureType: string,
@@ -170,7 +231,18 @@ export async function uploadDocument(
   file: File
 ): Promise<{ path: string; documentId: string }> {
   const userId = await requireUserId();
-  const fileName = `${Date.now()}-${file.name}`;
+
+  // Phase 3 FIX 5: Validate file before upload
+  if (file.size > UPLOAD_MAX_BYTES) {
+    throw new Error("File too large (max 5 MB).");
+  }
+  if (!UPLOAD_ALLOWED_TYPES.has(file.type)) {
+    throw new Error("Invalid file type. Accepted: PDF, JPEG, PNG, WebP.");
+  }
+
+  // Sanitize filename — strip anything that isn't alphanumeric, dot, or hyphen
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const fileName = `${Date.now()}-${safeName}`;
   const filePath = `${userId}/${certificateId}/${annexureType}/${category}/${fileName}`;
 
   // 1. Upload to Storage
@@ -202,58 +274,81 @@ export async function uploadDocument(
 
 /**
  * Deletes a document from storage and DB.
+ * Looks up file_url from DB by (documentId + user_id) — never trusts caller-supplied paths.
  */
-export async function deleteDocument(documentId: string, filePath: string): Promise<void> {
-  // 1. Delete from Storage
-  const { error: storageError } = await supabase.storage
-    .from("networth-documents")
-    .remove([filePath]);
+export async function deleteDocument(documentId: string): Promise<void> {
+  const userId = await requireUserId();
 
-  if (storageError) throw storageError;
+  // 1. Look up the document row (scoped to this user)
+  const { data: doc, error: lookupError } = await supabase
+    .from("documents")
+    .select("file_url")
+    .eq("id", documentId)
+    .eq("user_id", userId)
+    .single();
 
-  // 2. Delete from DB
+  if (lookupError || !doc) {
+    throw new Error("Document not found or access denied.");
+  }
+
+  // 2. Delete from DB first (reversible if storage fails — orphaned file is harmless)
   const { error: dbError } = await supabase
     .from("documents")
     .delete()
-    .eq("id", documentId);
+    .eq("id", documentId)
+    .eq("user_id", userId);
 
   if (dbError) throw dbError;
+
+  // 3. Delete from Storage using the DB-sourced path
+  const { error: storageError } = await supabase.storage
+    .from("networth-documents")
+    .remove([doc.file_url]);
+
+  if (storageError) {
+    // Log but don't throw — DB row is already deleted, orphaned file is acceptable
+    console.error("Failed to delete storage file (orphaned):", storageError);
+  }
 }
 
 /**
  * Fetches all documents associated with a certificate.
  */
 export async function getDocuments(certificateId: string): Promise<DocumentRecord[]> {
+  const userId = await requireUserId();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
-    .eq("certificate_id", certificateId);
+    .eq("certificate_id", certificateId)
+    .eq("user_id", userId);
 
   if (error) throw error;
 
-  // Generate signed URLs for each
-  // NOTE: Signed URLs bypass storage RLS once generated. 60s expiry is ideal
-  // for security but may cause UX issues if users review documents slowly.
-  // Current: 300s (5 min). Future hardening: reduce to 60s.
-  const docsWithUrls = await Promise.all(
-    data.map(async (doc) => {
-      const { data: signedUrlData } = await supabase.storage
-        .from("networth-documents")
-        .createSignedUrl(doc.file_url, 300);
-      
-      return {
-        ...doc,
-        fileUrl: signedUrlData?.signedUrl || "",
-      };
-    })
-  );
+  // PERF FIX 2: Batch signed URL generation — 1 API call instead of N.
+  // Supabase JS v2 supports createSignedUrls (plural) for batch operations.
+  const paths = data.map((doc) => doc.file_url);
+  let signedUrlMap: Record<string, string> = {};
 
-  return docsWithUrls.map((doc: Record<string, unknown>) => ({
+  if (paths.length > 0) {
+    const { data: signedUrls } = await supabase.storage
+      .from("networth-documents")
+      .createSignedUrls(paths, 300);
+
+    if (signedUrls) {
+      for (const item of signedUrls) {
+        if (item.signedUrl && item.path) {
+          signedUrlMap[item.path] = item.signedUrl;
+        }
+      }
+    }
+  }
+
+  return data.map((doc: Record<string, unknown>) => ({
     id: doc.id as string,
     certificateId: doc.certificate_id as string,
     annexureType: doc.annexure_type as string,
     category: doc.category as string,
-    fileUrl: doc.fileUrl as string,
+    fileUrl: signedUrlMap[doc.file_url as string] || "",
     fileName: doc.file_name as string,
     fileType: doc.file_type as string,
     uploadedAt: doc.uploaded_at as string,
@@ -264,25 +359,49 @@ export async function getDocuments(certificateId: string): Promise<DocumentRecor
  * Deletes a certificate and its associated documents from DB and Storage.
  */
 export async function deleteCertificate(id: string): Promise<void> {
-  // 1. Get documents to delete from storage
+  const userId = await requireUserId();
+
+  // 1. Collect storage paths AND form_data BEFORE deleting from DB
   const { data: docs } = await supabase
     .from("documents")
     .select("file_url")
-    .eq("certificate_id", id);
-    
+    .eq("certificate_id", id)
+    .eq("user_id", userId);
+
+  // Phase 5: Fetch form_data for audit snapshot before deletion
+  const { data: cert } = await supabase
+    .from("certificates")
+    .select("form_data")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .single();
+
+  // 2. Delete from DB first — cascades to documents table.
+  //    If this fails, nothing has been deleted — safe to re-try.
+  const { error } = await supabase
+    .from("certificates")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) throw error;
+
+  // Phase 5: Audit log — record certificate deletion (before-state only)
+  logAudit(
+    userId,
+    "delete",
+    "certificate",
+    id,
+    cert?.form_data as Record<string, unknown> ?? null,
+    null
+  );
+
+  // 3. Best-effort storage cleanup — orphaned blobs are harmless.
   if (docs && docs.length > 0) {
     const paths = docs.map(d => d.file_url);
     const { error: storageErr } = await supabase.storage.from("networth-documents").remove(paths);
     if (storageErr) {
-      console.error("Failed to delete storage files:", storageErr);
+      console.error("Storage cleanup failed (orphaned files are harmless):", storageErr);
     }
   }
-
-  // 2. Delete from certificates (DB will handle cascading to documents table)
-  const { error } = await supabase
-    .from("certificates")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
 }

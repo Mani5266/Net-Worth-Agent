@@ -77,6 +77,25 @@ export const sttRateLimit = createLimiter("stt", {
   window: "1 h",
 });
 
+/**
+ * /api/send-verification & /api/resend-verification — 5 requests per hour per email.
+ * Prevents spamming verification emails to a single address.
+ */
+export const emailVerifyRateLimit = createLimiter("email-verify", {
+  requests: 5,
+  window: "1 h",
+});
+
+/**
+ * /api/send-verification & /api/resend-verification — 10 requests per hour per IP.
+ * Prevents a single IP from flooding verification emails across accounts.
+ * Checked independently of emailVerifyRateLimit — BOTH must pass.
+ */
+export const emailVerifyIpRateLimit = createLimiter("email-verify-ip", {
+  requests: 10,
+  window: "1 h",
+});
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 interface LimiterConfig {
@@ -84,18 +103,34 @@ interface LimiterConfig {
   window: "1 h" | "1 m" | "1 d";
 }
 
-function createLimiter(prefix: string, config: LimiterConfig) {
+export function createLimiter(prefix: string, config: LimiterConfig) {
   const redis = getRedis();
 
   if (!redis) {
-    // Return a no-op limiter for local dev
+    // Phase 3 FIX 9: Loud warning / hard fail when rate limiting is disabled
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `\n⚠️  [ratelimit] Limiter "${prefix}" is a NO-OP — Upstash env vars missing. This is OK in local dev but MUST be configured for production.\n`
+      );
+    }
+
+    // Return a limiter that warns in dev but throws at check-time in production.
+    // (Cannot throw at module-init because Next.js build evaluates this during
+    //  "Collecting page data" where env vars may not be injected yet.)
     return {
-      check: async (_identifier: string) => ({
-        success: true as const,
-        limit: config.requests,
-        remaining: config.requests,
-        reset: Date.now() + 3600_000,
-      }),
+      check: async (_identifier: string) => {
+        if (process.env.NODE_ENV === "production") {
+          throw new Error(
+            `[SECURITY] Rate limiter "${prefix}" disabled — UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production.`
+          );
+        }
+        return {
+          success: true as const,
+          limit: config.requests,
+          remaining: config.requests,
+          reset: Date.now() + 3600_000,
+        };
+      },
     };
   }
 
@@ -125,12 +160,17 @@ function createLimiter(prefix: string, config: LimiterConfig) {
 
 /**
  * Get the client identifier for rate limiting.
- * Uses IP address from request headers.
+ * Phase 3 FIX 4: Prefers user ID (auth-validated) over IP for logged-in apps.
+ * Falls back to IP only if userId is not provided.
  */
 export function getClientIdentifier(
-  request: Request
+  request: Request,
+  userId?: string | null
 ): string {
-  // Try standard forwarded headers, then fall back
+  // Prefer authenticated user ID — immune to IP spoofing / shared IP
+  if (userId) return `user:${userId}`;
+
+  // Fallback: IP-based (for unauthenticated endpoints)
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     const firstIp = forwarded.split(",")[0]?.trim();

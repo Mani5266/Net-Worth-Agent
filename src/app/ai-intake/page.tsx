@@ -9,6 +9,45 @@ import type { FormData } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { ArrowLeft, Send, Sparkles, Loader2, Mic, Square } from "lucide-react";
 
+// ─── Deep merge helper for extracted form data ───────────────────────────────
+// Merges objects recursively but REPLACES arrays (AI returns complete arrays).
+// Prevents shallow spread from overwriting nested objects like incomeLabels.
+
+function deepMergeFormData(
+  target: Partial<FormData>,
+  source: Partial<FormData>
+): Partial<FormData> {
+  const result = { ...target };
+  for (const key of Object.keys(source) as (keyof FormData)[]) {
+    const srcVal = source[key];
+    const tgtVal = result[key];
+
+    if (srcVal === undefined || srcVal === null) continue;
+
+    // Arrays: replace entirely (AI returns the complete array each turn)
+    if (Array.isArray(srcVal)) {
+      (result as Record<string, unknown>)[key] = srcVal;
+    }
+    // Plain objects: merge recursively
+    else if (
+      typeof srcVal === "object" &&
+      typeof tgtVal === "object" &&
+      tgtVal !== null &&
+      !Array.isArray(tgtVal)
+    ) {
+      (result as Record<string, unknown>)[key] = {
+        ...(tgtVal as Record<string, unknown>),
+        ...(srcVal as Record<string, unknown>),
+      };
+    }
+    // Primitives: overwrite
+    else {
+      (result as Record<string, unknown>)[key] = srcVal;
+    }
+  }
+  return result;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
@@ -48,6 +87,9 @@ export default function AIIntakePage() {
   const chunksRef = useRef<Blob[]>([]);
   const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Phase 3 FIX 8: AbortController for in-flight fetch calls — cancelled on unmount
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -102,6 +144,13 @@ export default function AIIntakePage() {
     };
   }, []);
 
+  // Phase 3 FIX 8: Abort any in-flight fetch on unmount (prevents memory leaks)
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
   // ── Send message ─────────────────────────────────────────────────────────
 
   const handleSend = useCallback(async (overrideText?: string) => {
@@ -117,6 +166,11 @@ export default function AIIntakePage() {
     setSending(true);
 
     try {
+      // Phase 3 FIX 8: Cancel any previous in-flight request, create fresh controller
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const res = await fetch("/api/ai-intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -124,6 +178,7 @@ export default function AIIntakePage() {
           messages: newMessages,
           currentExtractedData: latestExtractedData,
         }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -138,11 +193,13 @@ export default function AIIntakePage() {
         { role: "assistant", content: data.message },
       ]);
 
-      // Merge safety — spread onto previous to prevent data loss if model omits a field
+      // FIX 5: Deep merge — preserves nested objects (labels, docs) from prior turns
       if (data.extractedData && typeof data.extractedData === "object") {
-        setLatestExtractedData((prev) => ({ ...prev, ...data.extractedData }));
+        setLatestExtractedData((prev) => deepMergeFormData(prev, data.extractedData));
       }
     } catch (err) {
+      // Phase 3 FIX 8: Silently ignore aborted requests (unmount or superseded)
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSending(false);
@@ -166,9 +223,15 @@ export default function AIIntakePage() {
         const formData = new FormData();
         formData.append("file", blob, "recording.webm");
 
+        // Phase 3 FIX 8: Use abort signal for STT fetch too
+        abortControllerRef.current?.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         const res = await fetch("/api/stt", {
           method: "POST",
           body: formData,
+          signal: controller.signal,
         });
 
         if (!res.ok) {
@@ -188,6 +251,8 @@ export default function AIIntakePage() {
         // Feed transcript into existing AI intake flow
         await handleSend(data.text.trim());
       } catch (err) {
+        // Phase 3 FIX 8: Silently ignore aborted requests
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setError(
           err instanceof Error
             ? err.message

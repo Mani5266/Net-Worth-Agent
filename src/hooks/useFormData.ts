@@ -208,30 +208,33 @@ export function useFormData() {
 
   // Reset only the fields belonging to a specific step
   const resetStep = useCallback((stepIndex: number) => {
-    // Clean up uploaded documents from Storage before resetting state
-    const docFieldMap: Record<number, "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs"> = {
-      2: "incomeDocs",
-      3: "immovableDocs",
-      4: "movableDocs",
-      5: "savingsDocs",
-    };
-    const docField = docFieldMap[stepIndex];
-    if (docField) {
-      const docMap = data[docField] as Record<string, UploadedDoc[]>;
-      for (const docs of Object.values(docMap)) {
-        for (const doc of docs) {
-          if (doc.documentId && doc.path) {
-            deleteDocument(doc.documentId, doc.path).catch((err) =>
-              console.error("Failed to delete document on step reset:", err)
-            );
+    const defaults = getStepDefaults(stepIndex);
+
+    setData((prev) => {
+      // FIX 4: Read doc map from `prev` (not stale closure) for cleanup
+      const docFieldMap: Record<number, "incomeDocs" | "immovableDocs" | "movableDocs" | "savingsDocs"> = {
+        2: "incomeDocs",
+        3: "immovableDocs",
+        4: "movableDocs",
+        5: "savingsDocs",
+      };
+      const docField = docFieldMap[stepIndex];
+      if (docField) {
+        const docMap = prev[docField] as Record<string, UploadedDoc[]>;
+        for (const docs of Object.values(docMap)) {
+          for (const doc of docs) {
+            if (doc.documentId && doc.path) {
+              deleteDocument(doc.documentId).catch((err) =>
+                console.error("Failed to delete document on step reset:", err)
+              );
+            }
           }
         }
       }
-    }
 
-    const defaults = getStepDefaults(stepIndex);
-    setData((prev) => ({ ...prev, ...defaults }));
-  }, [data]);
+      return { ...prev, ...defaults };
+    });
+  }, []);
 
   // Generic field update
   const updateField = useCallback(<K extends keyof FormData>(
@@ -340,7 +343,7 @@ export function useFormData() {
 
         // Fire-and-forget storage cleanup (don't block UI)
         if (removed?.documentId && removed?.path) {
-          deleteDocument(removed.documentId, removed.path).catch((err) =>
+          deleteDocument(removed.documentId).catch((err) =>
             console.error("Failed to delete document from storage:", err)
           );
         }

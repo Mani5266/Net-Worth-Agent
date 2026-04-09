@@ -87,6 +87,35 @@ function WizardShell() {
   const [amountWarnings, setAmountWarnings] = useState<string[]>([]);
   const certRef = useRef<HTMLDivElement>(null);
 
+  // FIX 1: Keep a ref to latest data so handleSave never reads stale closure
+  const dataRef = useRef(data);
+  useEffect(() => { dataRef.current = data; }, [data]);
+
+  // FIX 3: Ref-based mutex to prevent double-click duplicate saves
+  const savingRef = useRef(false);
+
+  // Phase 3 FIX 7: Track unsaved changes — warn before tab close
+  const dirtyRef = useRef(false);
+  const initialDataRef = useRef(data);
+
+  // Mark dirty whenever data changes (except initial mount)
+  useEffect(() => {
+    if (initialDataRef.current !== data) {
+      dirtyRef.current = true;
+    }
+  }, [data]);
+
+  // Attach beforeunload handler — warns user about unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
   // Restore saved step from localStorage on mount, then persist on change
   useEffect(() => {
     const saved = localStorage.getItem("networth_current_step");
@@ -187,6 +216,7 @@ function WizardShell() {
     updateCertificateId(null);
     clearAudit();
     setShowResetModal(false);
+    dirtyRef.current = false; // Phase 3 FIX 7: Reset dirty flag on new certificate
     // Clear persisted form data
     localStorage.removeItem("networth_form_data");
     toast("New certificate started", "success");
@@ -237,11 +267,16 @@ function WizardShell() {
 
   // ── Save draft ───────────────────────────────────────────────────────────
 
-  const handleSave = useCallback(async (currentStep: number) => {
+  const handleSave = useCallback(async (currentStep: number): Promise<boolean> => {
+    // FIX 3: Ref-based mutex — skip if already saving (prevents double-click duplicates)
+    if (savingRef.current) return false;
+    savingRef.current = true;
+
     try {
       setSaving(true);
 
-      const newData = { ...data };
+      // FIX 1: Read from ref instead of stale closure
+      const newData = { ...dataRef.current };
       if (currentStep === 0 && !newData.nickname && newData.purpose) {
         newData.nickname = newData.purpose
           .split("_")
@@ -257,13 +292,17 @@ function WizardShell() {
         await updateCertificateDraft(certificateId, newData);
       }
 
+      dirtyRef.current = false; // Phase 3 FIX 7: Reset dirty flag after successful save
       toast("Draft saved", "success");
+      return true; // FIX 2: Signal success
     } catch {
       toast("Failed to save draft", "error");
+      return false; // FIX 2: Signal failure
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
-  }, [certificateId, data, updateCertificateId, setData, toast]);
+  }, [certificateId, updateCertificateId, setData, toast]);
 
   // ── Next with Zod validation ─────────────────────────────────────────────
 
@@ -278,7 +317,10 @@ function WizardShell() {
       return;
     }
 
-    await handleSave(step);
+    // FIX 2: Only advance step if save succeeded
+    const saved = await handleSave(step);
+    if (!saved) return;
+
     setStep((s) => Math.min(STEPS.length - 1, s + 1));
     window.scrollTo(0, 0);
   }, [step, data, handleSave]);

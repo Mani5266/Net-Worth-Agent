@@ -95,11 +95,11 @@ export async function GET(req: NextRequest) {
     const supabase = createSupabaseServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Rate limiting
-    const identifier = getClientIdentifier(req);
+    // Rate limiting (keyed by user ID, not IP)
+    const identifier = getClientIdentifier(req, user.id);
     const rateResult = await exchangeRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);

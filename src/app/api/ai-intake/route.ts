@@ -7,6 +7,7 @@ import {
 } from "@/lib/ratelimit";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { FormDataSchema } from "@/lib/schemas";
+import { logUsage } from "@/lib/usage";
 
 // ─── Key fields for missing-fields hint ───────────────────────────────────────
 
@@ -182,6 +183,7 @@ interface ChatMessage {
 }
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now(); // PERF FIX 4: request timing
   try {
     // 0. Auth check — hard failure, no fallbacks
     const supabase = createSupabaseServerClient();
@@ -193,8 +195,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Rate limiting
-    const identifier = getClientIdentifier(req);
+    // 1. Rate limiting (keyed by user ID, not IP)
+    const identifier = getClientIdentifier(req, user.id);
     const rateResult = await aiIntakeRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -220,7 +222,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Basic validation of message shape
+    // Phase 3 FIX 1: Request size limits — cap messages to prevent DoS
+    if (messages.length > 20) {
+      return NextResponse.json(
+        { success: false, error: "Too many messages (max 20)." },
+        { status: 400 }
+      );
+    }
+
+    // Basic validation of message shape + per-message length limit
     for (const msg of messages) {
       if (
         typeof msg !== "object" ||
@@ -233,12 +243,32 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+      if (msg.content.length > 2000) {
+        return NextResponse.json(
+          { success: false, error: "Message too long (max 2000 characters)." },
+          { status: 400 }
+        );
+      }
     }
 
     const safeExtractedData =
       typeof currentExtractedData === "object" && currentExtractedData !== null
         ? currentExtractedData
         : {};
+
+    // Validate currentExtractedData through Zod BEFORE injecting into prompt.
+    // This prevents prompt injection via crafted field values.
+    const extractedValidation = FormDataSchema.partial().safeParse(safeExtractedData);
+    let sanitizedExtractedData: Record<string, unknown>;
+    if (extractedValidation.success) {
+      sanitizedExtractedData = extractedValidation.data as Record<string, unknown>;
+    } else {
+      // Zod rejected the input — use empty object rather than raw client data
+      console.warn("[AI_INTAKE_INPUT_VALIDATION_FAIL]", {
+        errorPaths: extractedValidation.error.issues.map((i) => i.path.join(".")),
+      });
+      sanitizedExtractedData = {};
+    }
 
     // 3. Trim to last 20 messages
     const trimmedMessages = (messages as ChatMessage[]).slice(-20);
@@ -248,8 +278,8 @@ export async function POST(req: NextRequest) {
     console.log("[AI_INTAKE_REQUEST]", {
       messageCount: trimmedMessages.length,
       lastUserMessageLength: lastUserMsg?.content.length ?? 0,
-      extractedKeyCount: Object.keys(safeExtractedData).length,
-      extractedKeys: Object.keys(safeExtractedData),
+      extractedKeyCount: Object.keys(sanitizedExtractedData).length,
+      extractedKeys: Object.keys(sanitizedExtractedData),
     });
 
     // 4. Get API key
@@ -266,7 +296,7 @@ export async function POST(req: NextRequest) {
     const systemWithContext =
       SYSTEM_PROMPT +
       "\n\nCurrent extracted data:\n" +
-      JSON.stringify(safeExtractedData);
+      JSON.stringify(sanitizedExtractedData);
 
     const contents = [
       {
@@ -279,25 +309,45 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    // 6. Call Gemini
-    const aiRes = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2048,
-            responseMimeType: "application/json",
+    // 6. Call Gemini (with timeout to prevent hanging)
+    const tGemini = Date.now(); // PERF FIX 4: Gemini call timing
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    let aiRes: Response;
+    try {
+      aiRes = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
           },
-        }),
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents,
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 2048,
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+        console.error("[AI Intake] Gemini request timed out (15s)");
+        return NextResponse.json(
+          { success: false, error: "AI service timed out. Please try again." },
+          { status: 504 }
+        );
       }
-    );
+      throw fetchErr;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
@@ -384,7 +434,19 @@ export async function POST(req: NextRequest) {
       validationPassed: validation.success,
     });
 
-    // 11. Return
+    // PERF FIX 4: Latency logging
+    console.log("[AI_INTAKE_PERF]", {
+      geminiMs: Date.now() - tGemini,
+      totalMs: Date.now() - t0,
+    });
+
+    // 11. Usage tracking (fire-and-forget — never blocks response)
+    logUsage(user.id, "ai_intake", {
+      messageCount: trimmedMessages.length,
+      extractedKeyCount: Object.keys(validatedData).length,
+    });
+
+    // 12. Return
     return NextResponse.json({
       message: finalMessage,
       extractedData: validatedData,

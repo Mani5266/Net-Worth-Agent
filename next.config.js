@@ -1,4 +1,12 @@
 /** @type {import('next').NextConfig} */
+
+// Phase 3 FIX 10: Only allow unsafe-eval in development (Next.js hot reload needs it).
+// In production, remove it to prevent XSS via eval().
+const isDev = process.env.NODE_ENV !== "production";
+const scriptSrc = isDev
+  ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+  : "script-src 'self' 'unsafe-inline'";
+
 const nextConfig = {
   reactStrictMode: true,
 
@@ -44,7 +52,7 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              scriptSrc,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://*.supabase.co",
               "font-src 'self' https://fonts.gstatic.com",

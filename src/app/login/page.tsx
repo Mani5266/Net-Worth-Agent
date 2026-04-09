@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check } from "lucide-react";
 
 /* ── Feature bullet ─────────────────────────────────────────── */
@@ -18,8 +18,9 @@ function Feature({ text }: { text: string }) {
 }
 
 /* ── Main page ──────────────────────────────────────────────── */
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,16 +30,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  /* redirect if already authenticated */
+  /* redirect if already authenticated + read URL params for status messages */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    // FIX 6: getUser() validates token server-side; getSession() only reads local storage
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
         router.replace("/");
       } else {
+        // Read verification status from URL params (set by /api/verify-email redirect)
+        const verified = searchParams.get("verified");
+        const errorParam = searchParams.get("error");
+
+        if (verified === "true") {
+          setSuccess("Email verified successfully! Please sign in.");
+        } else if (errorParam === "expired") {
+          setError("Verification link has expired. Please request a new one.");
+        } else if (errorParam === "invalid") {
+          setError("Invalid verification link. Please request a new one.");
+        }
+
         setChecking(false);
       }
     });
-  }, [router]);
+  }, [router, searchParams]);
 
   /* tab switch — clears messages */
   const switchTab = (tab: "login" | "signup") => {
@@ -84,8 +98,20 @@ export default function LoginPage() {
           await supabase.auth.signOut();
         }
 
+        // Send verification email (fire-and-forget — don't block signup UX)
+        // Email is used only for rate limiting; actual email is fetched from DB.
+        if (data.user?.id) {
+          fetch("/api/send-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, userId: data.user.id }),
+          }).catch(() => {
+            // Swallow — verification email failure should not break signup flow
+          });
+        }
+
         setSuccess(
-          "Account created successfully! Please login with your credentials."
+          "Account created! Check your email to verify your account."
         );
         setMode("login");
         setPassword("");
@@ -312,5 +338,23 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Suspense wrapper (required for useSearchParams in Next.js 14) ── */
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-navy-900 text-slate-400 font-sans">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-gold-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm">Loading...</span>
+          </div>
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }

@@ -8,6 +8,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isValidPassportNumber } from "@/lib/mrz";
 import { extractPassportMRZ } from "@/lib/ocr-fallback";
+import { logUsage } from "@/lib/usage";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ function maskPassport(pp: string): string {
 // ─── Route Handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now(); // PERF FIX 4: request timing
   try {
     // 0. Auth check — hard failure, no fallbacks
     const supabase = createSupabaseServerClient();
@@ -74,8 +76,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Rate limiting
-    const identifier = getClientIdentifier(req);
+    // 1. Rate limiting (keyed by user ID, not IP)
+    const identifier = getClientIdentifier(req, user.id);
     const rateResult = await ocrRateLimit.check(identifier);
     if (!rateResult.success) {
       return rateLimitResponse(rateResult.reset);
@@ -156,37 +158,64 @@ export async function POST(req: NextRequest) {
     const prompt = DOCUMENT_PROMPTS[documentType];
     let lastError = "";
 
+    // PERF FIX 1: Start MRZ extraction in parallel with Gemini for passport images.
+    // MRZ is independent of Gemini — both operate on raw base64Data.
+    // We await the result only after Gemini succeeds, saving ~1-2s of Tesseract latency.
+    const isPassportImage = documentType === "passport" && mimeType !== "application/pdf";
+    const mrzPromise = isPassportImage
+      ? extractPassportMRZ(base64Data, mimeType)
+      : Promise.resolve(null);
+
     for (const model of MODELS_TO_TRY) {
       try {
-        const aiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-goog-api-key": apiKey,
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    { text: prompt },
-                    {
-                      inlineData: {
-                        mimeType,
-                        data: base64Data,
-                      },
-                    },
-                  ],
-                },
-              ],
-              generationConfig: {
-                temperature: 0.1,
-                maxOutputTokens: 256,
+        // Phase 3 FIX 2: AbortController timeout for Gemini calls
+        const tGemini = Date.now(); // PERF FIX 4: Gemini call timing
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15_000);
+
+        let aiRes: Response;
+        try {
+          aiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey,
               },
-            }),
+              signal: controller.signal,
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      { text: prompt },
+                      {
+                        inlineData: {
+                          mimeType,
+                          data: base64Data,
+                        },
+                      },
+                    ],
+                  },
+                ],
+                generationConfig: {
+                  temperature: 0.1,
+                  maxOutputTokens: 256,
+                },
+              }),
+            }
+          );
+        } catch (fetchErr) {
+          clearTimeout(timeout);
+          if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+            lastError = `Model ${model} timed out (15s)`;
+            console.warn(`[OCR] ${lastError}`);
+            continue;
           }
-        );
+          throw fetchErr;
+        } finally {
+          clearTimeout(timeout);
+        }
 
         if (!aiRes.ok) {
           lastError = await aiRes.text();
@@ -207,6 +236,7 @@ export async function POST(req: NextRequest) {
         }
 
         const extracted = JSON.parse(jsonMatch[0]);
+        const geminiMs = Date.now() - tGemini; // PERF FIX 4
 
         // 9. Post-process and return based on document type
         if (documentType === "passport") {
@@ -215,12 +245,11 @@ export async function POST(req: NextRequest) {
             : "";
           const geminiName = typeof extracted.fullName === "string" ? extracted.fullName.trim() : "";
           const geminiValid = isValidPassportNumber(rawPp);
-          const isImage = mimeType !== "application/pdf";
 
-          // MRZ-first: for images, attempt MRZ before deciding on Gemini
+          // PERF FIX 1: Await the MRZ promise started before the Gemini loop
           let mrzResult: Awaited<ReturnType<typeof extractPassportMRZ>> = null;
-          if (isImage) {
-            mrzResult = await extractPassportMRZ(base64Data, mimeType);
+          if (isPassportImage) {
+            mrzResult = await mrzPromise;
           }
 
           const mrzValid = mrzResult !== null && isValidPassportNumber(mrzResult.passportNumber);
@@ -239,10 +268,12 @@ export async function POST(req: NextRequest) {
           console.log(
             `[OCR] passport | source=${source}` +
             ` | gemini_valid=${geminiValid} | mrz_valid=${mrzValid}` +
-            ` | mrz_attempted=${isImage} | conflict=${conflict}`
+            ` | mrz_attempted=${isPassportImage} | conflict=${conflict}` +
+            ` | geminiMs=${geminiMs} | totalMs=${Date.now() - t0}`
           );
 
           if (mrzValid && !conflict && mrzResult) {
+            logUsage(user.id, "ocr", { documentType, source: "mrz" });
             return NextResponse.json({
               success: true,
               fullName: mrzResult.fullName,
@@ -253,6 +284,7 @@ export async function POST(req: NextRequest) {
           }
 
           // Fallback: return Gemini result (validated against Indian format)
+          logUsage(user.id, "ocr", { documentType, source: "gemini" });
           return NextResponse.json({
             success: true,
             fullName: geminiName,
@@ -263,6 +295,8 @@ export async function POST(req: NextRequest) {
         }
 
         if (documentType === "aadhaar") {
+          console.log(`[OCR] aadhaar | geminiMs=${geminiMs} | totalMs=${Date.now() - t0}`);
+          logUsage(user.id, "ocr", { documentType: "aadhaar", source: "gemini" });
           return NextResponse.json({
             success: true,
             name: typeof extracted.name === "string" ? extracted.name.trim() : "",
@@ -282,9 +316,10 @@ export async function POST(req: NextRequest) {
     }
 
     // All models failed
+    console.error("[OCR] All models failed. Last error:", lastError);
     return NextResponse.json(
-      { success: false, error: "All AI models failed to process the document. " + lastError },
-      { status: 500 }
+      { success: false, error: "All AI models failed to process the document. Please try again." },
+      { status: 502 }
     );
   } catch (error) {
     console.error("[OCR] Unexpected error:", error);

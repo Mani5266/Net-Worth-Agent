@@ -147,8 +147,8 @@ export async function GET(
     return NextResponse.json({ success: false as const, error: "Unauthorized" }, { status: 401 });
   }
 
-  // Rate limiting
-  const identifier = getClientIdentifier(request);
+  // Rate limiting (keyed by user ID, not IP)
+  const identifier = getClientIdentifier(request, user.id);
   const rateResult = await goldPriceRateLimit.check(identifier);
   if (!rateResult.success) {
     return rateLimitResponse(rateResult.reset) as NextResponse<{
@@ -165,19 +165,20 @@ export async function GET(
 
 export async function POST(
   request: NextRequest
-): Promise<NextResponse<GoldValuation | { error: string }>> {
+): Promise<NextResponse<GoldValuation | { success: false; error: string }>> {
   // Auth check
   const supabase = createSupabaseServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ success: false as const, error: "Unauthorized" }, { status: 401 });
   }
 
-  // Rate limiting
-  const identifier = getClientIdentifier(request);
+  // Rate limiting (keyed by user ID, not IP)
+  const identifier = getClientIdentifier(request, user.id);
   const rateResult = await goldPriceRateLimit.check(identifier);
   if (!rateResult.success) {
     return rateLimitResponse(rateResult.reset) as NextResponse<{
+      success: false;
       error: string;
     }>;
   }
@@ -189,7 +190,7 @@ export async function POST(
     const parsed = GoldValuationRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { success: false as const, error: parsed.error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
       );
     }
@@ -217,7 +218,7 @@ export async function POST(
     });
   } catch {
     return NextResponse.json(
-      { error: "Invalid request body" },
+      { success: false as const, error: "Invalid request body" },
       { status: 400 }
     );
   }
