@@ -126,9 +126,8 @@ function LoginPageInner() {
         }
 
         setSuccess(
-          "Account created! Check your email to verify your account."
+          "Account created! Check your email to verify your account, then come back and login."
         );
-        setMode("login");
         setPassword("");
         setConfirmPassword("");
       } else {
