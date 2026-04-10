@@ -225,18 +225,45 @@ function WizardShell() {
     setShowResetModal(true);
   }, []);
 
-  const confirmReset = useCallback(() => {
+  const confirmReset = useCallback(async () => {
+    setShowResetModal(false);
+
+    // Auto-save current work before starting fresh
+    const currentData = dataRef.current;
+    const hasData = currentData.purpose || currentData.fullName || currentData.passportNumber;
+
+    if (hasData) {
+      try {
+        setSaving(true);
+        if (certificateId) {
+          await updateCertificateDraft(certificateId, currentData);
+        } else {
+          // First-time save — create a new draft so it appears in sidebar
+          const autoName = currentData.purpose
+            ? currentData.purpose.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+            : "Untitled";
+          const dataToSave = { ...currentData, nickname: currentData.nickname || autoName };
+          await saveCertificateDraft(dataToSave);
+        }
+      } catch {
+        // Save failed — still proceed with new certificate
+      } finally {
+        setSaving(false);
+        savingRef.current = false;
+      }
+    }
+
+    // Now start fresh
     setData(INITIAL_STATE);
     setStep(0);
     updateCertificateId(null);
     clearAudit();
-    setShowResetModal(false);
-    dirtyRef.current = false; // Phase 3 FIX 7: Reset dirty flag on new certificate
-    // Clear persisted form data
+    dirtyRef.current = false;
     localStorage.removeItem("networth_form_data");
+    await loadHistory(); // Refresh sidebar to show the saved draft
     toast("New certificate started", "success");
     window.scrollTo(0, 0);
-  }, [setData, updateCertificateId, clearAudit, toast]);
+  }, [certificateId, setData, updateCertificateId, clearAudit, loadHistory, toast]);
 
   const handleSwitchCertificate = useCallback(async (id: string) => {
     try {
@@ -695,13 +722,13 @@ function WizardShell() {
             <Button variant="secondary" size="sm" onClick={() => setShowResetModal(false)}>
               Cancel
             </Button>
-            <Button variant="danger" size="sm" onClick={confirmReset}>
+            <Button variant="primary" size="sm" onClick={confirmReset}>
               Start New
             </Button>
           </>
         }
       >
-        Are you sure you want to start a new certificate? This will clear all current inputs.
+        Your current certificate will be saved as a draft. You can switch back to it anytime from the sidebar.
       </Modal>
     </div>
   );
