@@ -139,7 +139,7 @@ function WizardShell() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<CertificateRecord[]>([]);
   const [showResetModal, setShowResetModal] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const [aiFlashKey, setAiFlashKey] = useState(0);
 
   // ── AI Chat → Form real-time binding ─────────────────────────────────────
