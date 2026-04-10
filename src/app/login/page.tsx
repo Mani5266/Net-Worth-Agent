@@ -21,7 +21,7 @@ function Feature({ text }: { text: string }) {
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -55,7 +55,7 @@ function LoginPageInner() {
   }, [router, searchParams]);
 
   /* tab switch — clears messages */
-  const switchTab = (tab: "login" | "signup") => {
+  const switchTab = (tab: "login" | "signup" | "forgot") => {
     setMode(tab);
     setError("");
     setSuccess("");
@@ -69,7 +69,22 @@ function LoginPageInner() {
     setSuccess("");
 
     try {
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        const res = await fetch("/api/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok && !data.success) {
+          setError(data.error || "Something went wrong.");
+          setLoading(false);
+          return;
+        }
+        setSuccess("If an account exists with that email, a password reset link has been sent. Check your inbox.");
+        setLoading(false);
+        return;
+      } else if (mode === "signup") {
         if (password !== confirmPassword) {
           setError("Passwords do not match.");
           setLoading(false);
@@ -149,6 +164,7 @@ function LoginPageInner() {
 
   /* ── Render ─────────────────────────────────────────────── */
   const isLogin = mode === "login";
+  const isForgot = mode === "forgot";
 
   return (
     <div className="min-h-screen flex font-sans">
@@ -204,39 +220,47 @@ function LoginPageInner() {
           </div>
 
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-1">
-            {isLogin ? "Sign in to your account" : "Create your account"}
+            {isForgot
+              ? "Reset your password"
+              : isLogin
+                ? "Sign in to your account"
+                : "Create your account"}
           </h2>
           <p className="text-sm text-slate-400 mb-8">
-            {isLogin
-              ? "Enter your credentials to access the dashboard."
-              : "Enter your details to get started."}
+            {isForgot
+              ? "Enter your email and we'll send you a reset link."
+              : isLogin
+                ? "Enter your credentials to access the dashboard."
+                : "Enter your details to get started."}
           </p>
 
           {/* tabs */}
-          <div className="flex mb-8 border border-slate-200 rounded-[10px] overflow-hidden">
-            <button
-              type="button"
-              onClick={() => switchTab("login")}
-              className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
-                isLogin
-                  ? "bg-navy-950 text-white"
-                  : "bg-transparent text-slate-400"
-              }`}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              onClick={() => switchTab("signup")}
-              className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
-                !isLogin
-                  ? "bg-navy-950 text-white"
-                  : "bg-transparent text-slate-400"
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
+          {!isForgot && (
+            <div className="flex mb-8 border border-slate-200 rounded-[10px] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => switchTab("login")}
+                className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
+                  isLogin
+                    ? "bg-navy-950 text-white"
+                    : "bg-transparent text-slate-400"
+                }`}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                onClick={() => switchTab("signup")}
+                className={`flex-1 py-3 text-sm font-semibold transition-all border-none cursor-pointer ${
+                  !isLogin
+                    ? "bg-navy-950 text-white"
+                    : "bg-transparent text-slate-400"
+                }`}
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
 
           {/* messages */}
           {error && (
@@ -268,24 +292,36 @@ function LoginPageInner() {
               />
             </div>
 
-            <div className="mb-5">
-              <label className="block text-sm text-slate-900 mb-2 font-semibold">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                minLength={6}
-                autoComplete={isLogin ? "current-password" : "new-password"}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
-                  focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
-              />
-            </div>
+            {!isForgot && (
+              <div className="mb-5">
+                <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                  minLength={6}
+                  autoComplete={isLogin ? "current-password" : "new-password"}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                    focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
+                />
+                {isLogin && (
+                  <div className="text-right mt-1.5">
+                    <a
+                      onClick={() => switchTab("forgot")}
+                      className="text-xs text-slate-400 hover:text-navy-950 font-medium cursor-pointer hover:underline transition-colors"
+                    >
+                      Forgot password?
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
 
-            {!isLogin && (
+            {!isLogin && !isForgot && (
               <div className="mb-5">
                 <label className="block text-sm text-slate-900 mb-2 font-semibold">
                   Confirm Password
@@ -308,12 +344,28 @@ function LoginPageInner() {
               className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2
                 transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "..." : isLogin ? "Sign In" : "Create Account"}
+              {loading
+                ? "..."
+                : isForgot
+                  ? "Send Reset Link"
+                  : isLogin
+                    ? "Sign In"
+                    : "Create Account"}
             </button>
           </form>
 
           <div className="text-center mt-5 text-sm text-slate-400">
-            {isLogin ? (
+            {isForgot ? (
+              <>
+                Remember your password?{" "}
+                <a
+                  onClick={() => switchTab("login")}
+                  className="text-navy-950 font-semibold cursor-pointer hover:underline"
+                >
+                  Back to Login
+                </a>
+              </>
+            ) : isLogin ? (
               <>
                 Don&apos;t have an account?{" "}
                 <a

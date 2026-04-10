@@ -18,6 +18,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isLoginPage = pathname === "/login";
   const isVerifyEmailPage = pathname === "/verify-email";
+  const isResetPasswordPage = pathname === "/reset-password";
 
   let supabaseResponse = NextResponse.next({ request });
 
@@ -46,9 +47,9 @@ export async function middleware(request: NextRequest) {
     // Refresh the session (important for keeping tokens alive)
     const { data } = await supabase.auth.getUser();
 
-    // ── No user: allow /login only ────────────────────────────────────────
+    // ── No user: allow /login and /reset-password only ─────────────────────
     if (!data?.user) {
-      if (!isLoginPage) {
+      if (!isLoginPage && !isResetPasswordPage) {
         const url = request.nextUrl.clone();
         url.pathname = "/login";
         return redirectWithCookies(url, supabaseResponse);
@@ -60,8 +61,8 @@ export async function middleware(request: NextRequest) {
     const isVerified = Boolean(data.user.email_confirmed_at);
 
     if (!isVerified) {
-      // Unverified users can access /login and /verify-email only
-      if (isLoginPage || isVerifyEmailPage) {
+      // Unverified users can access /login, /verify-email, and /reset-password only
+      if (isLoginPage || isVerifyEmailPage || isResetPasswordPage) {
         return supabaseResponse;
       }
       // All other routes → redirect to /verify-email
@@ -70,8 +71,8 @@ export async function middleware(request: NextRequest) {
       return redirectWithCookies(url, supabaseResponse);
     }
 
-    // ── Verified user: block /login and /verify-email → redirect / ────────
-    if (isLoginPage || isVerifyEmailPage) {
+    // ── Verified user: block /login, /verify-email, /reset-password → redirect / ────────
+    if (isLoginPage || isVerifyEmailPage || isResetPasswordPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       return redirectWithCookies(url, supabaseResponse);
@@ -81,7 +82,7 @@ export async function middleware(request: NextRequest) {
   } catch {
     // If anything fails (Supabase unreachable, env vars missing, etc.)
     // fail CLOSED — redirect to login for safety
-    if (!isLoginPage) {
+    if (!isLoginPage && !isResetPasswordPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       return redirectWithCookies(url, supabaseResponse);
