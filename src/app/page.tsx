@@ -623,7 +623,7 @@ function WizardShell() {
           loading={loading}
         />
 
-        <main className={`flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden`}>
+        <main className={`flex-1 flex flex-col lg:flex-row min-w-0`}>
           {/* Form area — shrinks when chat is open */}
           <div className={`${isChatOpen ? "lg:flex-[73] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
             <div className="max-w-4xl mx-auto">
@@ -699,7 +699,7 @@ function WizardShell() {
                 className="
                   fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
                   lg:flex-[27] lg:min-w-0 lg:border-l lg:border-slate-200
-                  h-screen lg:h-auto animate-panel-in
+                  h-screen lg:sticky lg:top-0 lg:h-screen animate-panel-in
                 "
               >
                 <ChatPanel
