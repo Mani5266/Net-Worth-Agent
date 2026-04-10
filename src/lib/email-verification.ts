@@ -23,6 +23,28 @@ type TokenVerifyResult =
   | { success: true }
   | { success: false; error: string };
 
+// ─── Clear Email Confirmation ─────────────────────────────────────────────────
+
+/**
+ * Clears email_confirmed_at for a user so they start as "unverified".
+ * Called right after signup when Supabase "Confirm email" is OFF
+ * (which auto-confirms users). This ensures our custom flow is the gate.
+ */
+export async function clearEmailConfirmation(userId: string): Promise<void> {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    email_confirm: false,
+  });
+  if (error) {
+    console.error("[EMAIL_VERIFY] Failed to clear email_confirmed_at", {
+      userId,
+      error: error.message,
+    });
+  } else {
+    console.log("[EMAIL_VERIFY] Cleared email_confirmed_at", { userId });
+  }
+}
+
 // ─── Create & Send Verification ───────────────────────────────────────────────
 
 /**
@@ -128,34 +150,66 @@ export async function createAndSendVerification(
 /**
  * Verifies a raw token:
  * 1. Hashes the raw token
- * 2. Atomic DELETE ... WHERE token_hash = hash AND expires_at > now() ... RETURNING
- * 3. If row returned → marks user email as confirmed
- * 4. Token is single-use (deleted on verification)
+ * 2. Looks up the token row by hash
+ * 3. Checks expiry in JS (avoids PostgREST .gt() filter issues)
+ * 4. Deletes the row (single-use)
+ * 5. Marks user email as confirmed in Supabase Auth
  */
 export async function verifyToken(rawToken: string): Promise<TokenVerifyResult> {
   const admin = createSupabaseAdminClient();
   const tokenHash = hashToken(rawToken);
+  const now = new Date().toISOString();
 
-  // Atomic: delete the token row if it exists and hasn't expired, return it
-  const { data, error } = await Promise.resolve(
+  console.log("[EMAIL_VERIFY] Looking up token", {
+    tokenHashPrefix: tokenHash.slice(0, 8),
+    now,
+  });
+
+  // Step 1: Find the token row (must exist and not be expired)
+  const { data: row, error: selectError } = await Promise.resolve(
     admin
       .from("email_verifications")
-      .delete()
+      .select("id, user_id, expires_at")
       .eq("token_hash", tokenHash)
-      .gt("expires_at", new Date().toISOString())
-      .select("user_id")
       .single()
   );
 
-  if (error || !data) {
-    console.error("[EMAIL_VERIFY] Token verification failed", {
-      reason: error ? "db-error" : "no-matching-row",
-      errorMessage: error?.message ?? "none",
-      errorCode: error?.code ?? "none",
+  if (selectError || !row) {
+    console.error("[EMAIL_VERIFY] Token not found in DB", {
+      errorMessage: selectError?.message ?? "none",
+      errorCode: selectError?.code ?? "none",
       tokenHashPrefix: tokenHash.slice(0, 8),
     });
     return { success: false, error: "invalid-or-expired" };
   }
+
+  // Check expiry
+  if (new Date(row.expires_at) <= new Date()) {
+    console.error("[EMAIL_VERIFY] Token expired", {
+      expiresAt: row.expires_at,
+      now,
+      tokenHashPrefix: tokenHash.slice(0, 8),
+    });
+    // Clean up the expired row
+    await Promise.resolve(
+      admin.from("email_verifications").delete().eq("id", row.id)
+    );
+    return { success: false, error: "invalid-or-expired" };
+  }
+
+  // Step 2: Delete the token (single-use)
+  const { error: deleteError } = await Promise.resolve(
+    admin.from("email_verifications").delete().eq("id", row.id)
+  );
+
+  if (deleteError) {
+    console.error("[EMAIL_VERIFY] Failed to delete token after verification", {
+      errorMessage: deleteError.message,
+    });
+    // Non-fatal — continue with confirmation (token was valid)
+  }
+
+  const data = row;
 
   // Mark user email as confirmed in Supabase Auth
   const { error: updateError } = await admin.auth.admin.updateUserById(

@@ -6,7 +6,7 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/ratelimit";
-import { createAndSendVerification } from "@/lib/email-verification";
+import { createAndSendVerification, clearEmailConfirmation } from "@/lib/email-verification";
 
 // ─── POST /api/send-verification ──────────────────────────────────────────────
 // Called immediately after signup (unauthenticated).
@@ -57,7 +57,11 @@ export async function POST(req: NextRequest) {
       return rateLimitResponse(ipLimit.reset);
     }
 
-    // 3. Create and send verification
+    // 3. Clear email_confirmed_at so user starts as unverified
+    // (Supabase auto-confirms when "Confirm email" is OFF)
+    await clearEmailConfirmation(userId as string);
+
+    // 4. Create and send verification
     const result = await createAndSendVerification(userId);
 
     console.log("[SEND_VERIFICATION] Result", {
