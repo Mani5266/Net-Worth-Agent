@@ -66,9 +66,9 @@ function LoginPageInner() {
           // User exists but not verified — sign them out and show login page
           await supabase.auth.signOut();
         } catch {
-          // If check fails, redirect anyway — middleware will catch unverified users
-          router.replace("/");
-          return;
+          // Fail CLOSED — if verification check fails, sign out and show login page.
+          // NEVER redirect to "/" on failure — that bypasses the gate.
+          await supabase.auth.signOut();
         }
       }
 
@@ -177,23 +177,34 @@ function LoginPageInner() {
 
         // Server-side verification check via admin client (bulletproof — no JWT caching issues)
         const userId = signInData.user?.id;
-        if (userId) {
-          try {
-            const checkRes = await fetch("/api/check-verification", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId }),
-            });
-            const checkData = await checkRes.json();
-            if (!checkData.verified) {
-              await supabase.auth.signOut();
-              setError("Please verify your email before logging in. Check your inbox for the verification link.");
-              setLoading(false);
-              return;
-            }
-          } catch {
-            // If check fails, fall through to middleware gate as safety net
+        if (!userId) {
+          // Shouldn't happen — signIn succeeded but no user ID. Fail closed.
+          await supabase.auth.signOut();
+          setError("Something went wrong. Please try again.");
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const checkRes = await fetch("/api/check-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId }),
+          });
+          const checkData = await checkRes.json();
+          if (!checkData.verified) {
+            await supabase.auth.signOut();
+            setError("Please verify your email before logging in. Check your inbox for the verification link.");
+            setLoading(false);
+            return;
           }
+        } catch {
+          // Fail CLOSED — if verification check fails, sign out and block login.
+          // NEVER fall through to router.replace("/") — that bypasses the gate.
+          await supabase.auth.signOut();
+          setError("Unable to verify your account status. Please try again.");
+          setLoading(false);
+          return;
         }
 
         router.replace("/");
