@@ -140,12 +140,15 @@ function WizardShell() {
   const [history, setHistory] = useState<CertificateRecord[]>([]);
   const [showResetModal, setShowResetModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [aiFlashKey, setAiFlashKey] = useState(0);
 
   // ── AI Chat → Form real-time binding ─────────────────────────────────────
 
   const handleExtractedData = useCallback(
     (extracted: Partial<FormData>) => {
       setData((prev) => deepMergeFormData(prev, extracted) as FormData);
+      // Trigger gold flash on form area
+      setAiFlashKey((k) => k + 1);
     },
     [setData]
   );
@@ -595,7 +598,7 @@ function WizardShell() {
 
         <main className={`flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden`}>
           {/* Form area — shrinks when chat is open */}
-          <div className={`${isChatOpen ? "lg:flex-[58] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
+          <div className={`${isChatOpen ? "lg:flex-[73] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
             <div className="max-w-4xl mx-auto">
             {/* Page Header */}
             <div className="no-print mb-6">
@@ -638,7 +641,9 @@ function WizardShell() {
               {loading ? (
                 <StepSkeleton />
               ) : (
-                renderStep()
+                <div key={`ai-${aiFlashKey}`} className={aiFlashKey > 0 ? "ai-flash rounded-xl" : ""}>
+                  {renderStep()}
+                </div>
               )}
             </div>
 
@@ -666,8 +671,8 @@ function WizardShell() {
               <div
                 className="
                   fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
-                  lg:flex-[42] lg:min-w-0 lg:border-l lg:border-slate-200
-                  h-screen lg:h-auto
+                  lg:flex-[27] lg:min-w-0 lg:border-l lg:border-slate-200
+                  h-screen lg:h-auto animate-panel-in
                 "
               >
                 <ChatPanel
