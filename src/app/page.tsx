@@ -2,11 +2,11 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button, Input } from "@/components/ui";
 import { Sidebar } from "@/components/Sidebar";
 import { WizardNav } from "@/components/WizardNav";
+import { ChatPanel } from "@/components/ChatPanel";
 import { StepPurpose } from "@/components/steps/StepPurpose";
 import { StepApplicant } from "@/components/steps/StepApplicant";
 import { StepIncome } from "@/components/steps/StepIncome";
@@ -21,6 +21,7 @@ import { INITIAL_STATE } from "@/hooks/useFormData";
 import { STEPS } from "@/constants";
 import { buildCertificateText, computeTotals, formatINR, parseAmount } from "@/lib/utils";
 import { validateFormStep, getValidationMessages, validateAmountsForCertificate } from "@/lib/validation";
+import { deepMergeFormData } from "@/lib/merge";
 import {
   saveCertificateDraft,
   updateCertificateDraft,
@@ -31,6 +32,7 @@ import {
 } from "@/lib/db";
 import { supabase } from "@/lib/supabase";
 import type { CertificateRecord } from "@/types";
+import type { FormData } from "@/types";
 import { useToast } from "@/components/ui/Toast";
 import { Modal } from "@/components/ui/Modal";
 import { StepSkeleton } from "@/components/ui/Skeleton";
@@ -137,6 +139,16 @@ function WizardShell() {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<CertificateRecord[]>([]);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // ── AI Chat → Form real-time binding ─────────────────────────────────────
+
+  const handleExtractedData = useCallback(
+    (extracted: Partial<FormData>) => {
+      setData((prev) => deepMergeFormData(prev, extracted) as FormData);
+    },
+    [setData]
+  );
 
   // ── Persistence helpers ──────────────────────────────────────────────────
 
@@ -180,10 +192,8 @@ function WizardShell() {
           const parsed = JSON.parse(resumeData);
           if (parsed.purpose !== undefined) {
             setData(parsed);
-            if (resumeId !== "ai-prefill") {
-              setCertificateId(resumeId);
-              localStorage.setItem("networth_current_id", resumeId);
-            }
+            setCertificateId(resumeId);
+            localStorage.setItem("networth_current_id", resumeId);
             if (viewOnly === "true") setStep(6);
             return;
           }
@@ -579,11 +589,14 @@ function WizardShell() {
           onSwitchCertificate={handleSwitchCertificate}
           onRename={handleRename}
           onDelete={handleDelete}
+          onToggleChat={() => setIsChatOpen((v) => !v)}
           loading={loading}
         />
 
-        <main className="flex-1 px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto">
-          <div className="max-w-4xl mx-auto">
+        <main className={`flex-1 flex flex-col lg:flex-row min-w-0 overflow-hidden`}>
+          {/* Form area — shrinks when chat is open */}
+          <div className={`${isChatOpen ? "lg:flex-[58] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
+            <div className="max-w-4xl mx-auto">
             {/* Page Header */}
             <div className="no-print mb-6">
               <h1 className="text-3xl font-black text-navy-950 tracking-tight">
@@ -593,12 +606,12 @@ function WizardShell() {
                 <p className="text-sm text-slate-500">
                   Fill in the details below to generate your certificate
                 </p>
-                <Link
-                  href="/ai-intake"
+                <button
+                  onClick={() => setIsChatOpen((v) => !v)}
                   className="text-xs font-semibold text-gold-600 hover:text-gold-700 whitespace-nowrap transition-colors"
                 >
-                  or fill with AI
-                </Link>
+                  {isChatOpen ? "close AI panel" : "or fill with AI"}
+                </button>
               </div>
             </div>
 
@@ -639,6 +652,31 @@ function WizardShell() {
               onResetStep={() => resetStep(step)}
             />
           </div>
+          </div>
+
+          {/* AI Chat Panel — desktop: side-by-side; mobile: full-screen overlay */}
+          {isChatOpen && (
+            <>
+              {/* Mobile overlay backdrop */}
+              <div
+                className="lg:hidden fixed inset-0 z-40 bg-navy-950/60 backdrop-blur-sm"
+                onClick={() => setIsChatOpen(false)}
+                aria-hidden="true"
+              />
+              <div
+                className="
+                  fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
+                  lg:flex-[42] lg:min-w-0 lg:border-l lg:border-slate-200
+                  h-screen lg:h-auto
+                "
+              >
+                <ChatPanel
+                  onExtractedData={handleExtractedData}
+                  onClose={() => setIsChatOpen(false)}
+                />
+              </div>
+            </>
+          )}
         </main>
       </div>
 

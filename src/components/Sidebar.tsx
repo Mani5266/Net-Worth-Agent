@@ -28,6 +28,7 @@ interface SidebarProps {
   onSwitchCertificate: (id: string) => Promise<void>;
   onRename: (id: string, newName: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onToggleChat: () => void;
   loading: boolean;
 }
 
@@ -38,6 +39,7 @@ export function Sidebar({
   onSwitchCertificate,
   onRename,
   onDelete,
+  onToggleChat,
   loading,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -108,15 +110,17 @@ export function Sidebar({
       </button>
 
       {/* AI Intake */}
-      <Link
-        href="/ai-intake"
-        onClick={() => setMobileOpen(false)}
+      <button
+        onClick={() => {
+          onToggleChat();
+          setMobileOpen(false);
+        }}
         className="w-full flex items-center justify-center gap-2 mb-8 py-2.5 px-4 rounded-xl font-semibold text-sm
           text-gold-400 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/20
           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gold-500/30 focus:ring-offset-2 focus:ring-offset-navy-900"
       >
         <Sparkles className="w-4 h-4" /> Fill with AI
-      </Link>
+      </button>
 
       {/* Certificate List */}
       <div className="flex-1 overflow-y-auto">
