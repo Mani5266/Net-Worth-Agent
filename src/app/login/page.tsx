@@ -30,27 +30,45 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  /* redirect if already authenticated + read URL params for status messages */
+  /* redirect if already authenticated + verified; read URL params for status messages */
   useEffect(() => {
     // FIX 6: getUser() validates token server-side; getSession() only reads local storage
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
-        router.replace("/");
-      } else {
-        // Read verification status from URL params (set by /api/verify-email redirect)
-        const verified = searchParams.get("verified");
-        const errorParam = searchParams.get("error");
-
-        if (verified === "true") {
-          setSuccess("Email verified successfully! Please sign in.");
-        } else if (errorParam === "expired") {
-          setError("Verification link has expired. Please request a new one.");
-        } else if (errorParam === "invalid") {
-          setError("Invalid verification link. Please request a new one.");
+        // Server-side verification check before auto-redirect
+        try {
+          const checkRes = await fetch("/api/check-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: user.id }),
+          });
+          const checkData = await checkRes.json();
+          if (checkData.verified) {
+            router.replace("/");
+            return;
+          }
+          // User exists but not verified — sign them out and show login page
+          await supabase.auth.signOut();
+        } catch {
+          // If check fails, redirect anyway — middleware will catch unverified users
+          router.replace("/");
+          return;
         }
-
-        setChecking(false);
       }
+
+      // Read verification status from URL params (set by /api/verify-email redirect)
+      const verified = searchParams.get("verified");
+      const errorParam = searchParams.get("error");
+
+      if (verified === "true") {
+        setSuccess("Email verified successfully! Please sign in.");
+      } else if (errorParam === "expired") {
+        setError("Verification link has expired. Please request a new one.");
+      } else if (errorParam === "invalid") {
+        setError("Invalid verification link. Please request a new one.");
+      }
+
+      setChecking(false);
     });
   }, [router, searchParams]);
 
@@ -133,7 +151,7 @@ function LoginPageInner() {
         setPassword("");
         setConfirmPassword("");
       } else {
-        const { error: signInError } =
+        const { data: signInData, error: signInError } =
           await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
           setError(signInError.message);
@@ -141,13 +159,25 @@ function LoginPageInner() {
           return;
         }
 
-        // Check if email is verified — block login if not
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user && !user.email_confirmed_at) {
-          await supabase.auth.signOut();
-          setError("Please verify your email before logging in. Check your inbox for the verification link.");
-          setLoading(false);
-          return;
+        // Server-side verification check via admin client (bulletproof — no JWT caching issues)
+        const userId = signInData.user?.id;
+        if (userId) {
+          try {
+            const checkRes = await fetch("/api/check-verification", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId }),
+            });
+            const checkData = await checkRes.json();
+            if (!checkData.verified) {
+              await supabase.auth.signOut();
+              setError("Please verify your email before logging in. Check your inbox for the verification link.");
+              setLoading(false);
+              return;
+            }
+          } catch {
+            // If check fails, fall through to middleware gate as safety net
+          }
         }
 
         router.replace("/");
