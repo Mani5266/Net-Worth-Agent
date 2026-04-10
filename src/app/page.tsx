@@ -624,6 +624,30 @@ function WizardShell() {
         />
 
         <main className={`flex-1 flex flex-col lg:flex-row min-w-0`}>
+          {/* AI Chat Panel — desktop: side-by-side on left; mobile: full-screen overlay */}
+          {isChatOpen && (
+            <>
+              {/* Mobile overlay backdrop */}
+              <div
+                className="lg:hidden fixed inset-0 z-40 bg-navy-950/60 backdrop-blur-sm"
+                onClick={() => setIsChatOpen(false)}
+                aria-hidden="true"
+              />
+              <div
+                className="
+                  fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
+                  lg:flex-[27] lg:min-w-0 lg:border-r lg:border-slate-200
+                  h-screen lg:sticky lg:top-0 lg:h-screen animate-panel-in
+                "
+              >
+                <ChatPanel
+                  onExtractedData={handleExtractedData}
+                  onClose={() => setIsChatOpen(false)}
+                />
+              </div>
+            </>
+          )}
+
           {/* Form area — shrinks when chat is open */}
           <div className={`${isChatOpen ? "lg:flex-[73] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
             <div className="max-w-4xl mx-auto">
@@ -685,30 +709,6 @@ function WizardShell() {
             />
           </div>
           </div>
-
-          {/* AI Chat Panel — desktop: side-by-side; mobile: full-screen overlay */}
-          {isChatOpen && (
-            <>
-              {/* Mobile overlay backdrop */}
-              <div
-                className="lg:hidden fixed inset-0 z-40 bg-navy-950/60 backdrop-blur-sm"
-                onClick={() => setIsChatOpen(false)}
-                aria-hidden="true"
-              />
-              <div
-                className="
-                  fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
-                  lg:flex-[27] lg:min-w-0 lg:border-l lg:border-slate-200
-                  h-screen lg:sticky lg:top-0 lg:h-screen animate-panel-in
-                "
-              >
-                <ChatPanel
-                  onExtractedData={handleExtractedData}
-                  onClose={() => setIsChatOpen(false)}
-                />
-              </div>
-            </>
-          )}
         </main>
       </div>
 
