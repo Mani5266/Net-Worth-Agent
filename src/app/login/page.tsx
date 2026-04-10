@@ -113,16 +113,18 @@ function LoginPageInner() {
           await supabase.auth.signOut();
         }
 
-        // Send verification email (fire-and-forget — don't block signup UX)
-        // Email is used only for rate limiting; actual email is fetched from DB.
+        // Send verification email and clear auto-confirmation.
+        // MUST await — otherwise user can login before email_confirmed_at is cleared.
         if (data.user?.id) {
-          fetch("/api/send-verification", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, userId: data.user.id }),
-          }).catch(() => {
-            // Swallow — verification email failure should not break signup flow
-          });
+          try {
+            await fetch("/api/send-verification", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, userId: data.user.id }),
+            });
+          } catch {
+            // Verification email failure should not break signup flow
+          }
         }
 
         setSuccess(
@@ -138,6 +140,16 @@ function LoginPageInner() {
           setLoading(false);
           return;
         }
+
+        // Check if email is verified — block login if not
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && !user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          setError("Please verify your email before logging in. Check your inbox for the verification link.");
+          setLoading(false);
+          return;
+        }
+
         router.replace("/");
         return;
       }
