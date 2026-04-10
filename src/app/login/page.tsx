@@ -17,6 +17,22 @@ function Feature({ text }: { text: string }) {
   );
 }
 
+/* ── Friendly error messages for raw Supabase errors ────────── */
+function friendlyAuthError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("password should contain"))
+    return "Password must include at least one uppercase letter, one lowercase letter, one number, and one special character.";
+  if (lower.includes("user already registered"))
+    return "An account with this email already exists. Try logging in instead.";
+  if (lower.includes("invalid login credentials"))
+    return "Incorrect email or password. Please try again.";
+  if (lower.includes("email rate limit"))
+    return "Too many attempts. Please wait a few minutes and try again.";
+  if (lower.includes("over_email_send_rate_limit"))
+    return "Too many attempts. Please wait a few minutes and try again.";
+  return raw;
+}
+
 /* ── Main page ──────────────────────────────────────────────── */
 function LoginPageInner() {
   const router = useRouter();
@@ -119,7 +135,7 @@ function LoginPageInner() {
           password,
         });
         if (signUpError) {
-          setError(signUpError.message);
+          setError(friendlyAuthError(signUpError.message));
           setLoading(false);
           return;
         }
@@ -154,7 +170,7 @@ function LoginPageInner() {
         const { data: signInData, error: signInError } =
           await supabase.auth.signInWithPassword({ email, password });
         if (signInError) {
-          setError(signInError.message);
+          setError(friendlyAuthError(signInError.message));
           setLoading(false);
           return;
         }
