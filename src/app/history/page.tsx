@@ -23,7 +23,8 @@ export default function HistoryPage() {
       setLoading(true);
       const data = await getAllCertificates();
       setCertificates(data);
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === "Not authenticated") return;
       toast("Failed to load certificates", "error");
     } finally {
       setLoading(false);

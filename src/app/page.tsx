@@ -155,7 +155,9 @@ function WizardShell() {
     try {
       const certs = await getAllCertificates();
       setHistory(certs);
-    } catch {
+    } catch (err) {
+      // Suppress toast if user is not authenticated (middleware will redirect)
+      if (err instanceof Error && err.message === "Not authenticated") return;
       toast("Failed to load history", "error");
     }
   }, [toast]);
