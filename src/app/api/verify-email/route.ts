@@ -13,12 +13,20 @@ export async function GET(req: NextRequest) {
     const token = req.nextUrl.searchParams.get("token");
 
     if (!token) {
+      console.log("[VERIFY_EMAIL] No token in query params");
       return NextResponse.redirect(
         new URL("/login?error=invalid", appUrl)
       );
     }
 
+    console.log("[VERIFY_EMAIL] Attempting verification", {
+      tokenLength: token.length,
+      tokenPrefix: token.slice(0, 8),
+    });
+
     const result = await verifyToken(token);
+
+    console.log("[VERIFY_EMAIL] Result", { success: result.success });
 
     if (result.success) {
       return NextResponse.redirect(

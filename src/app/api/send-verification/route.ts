@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
     // 3. Create and send verification
     const result = await createAndSendVerification(userId);
 
+    console.log("[SEND_VERIFICATION] Result", {
+      success: result.success,
+      provider: result.success ? result.provider : undefined,
+      error: !result.success ? result.error : undefined,
+    });
+
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error },

@@ -87,9 +87,16 @@ export async function createAndSendVerification(
     console.error("[EMAIL_VERIFY] Failed to insert token", {
       userId,
       error: insertError.message,
+      code: insertError.code,
     });
     return { success: false, error: "Failed to create verification token" };
   }
+
+  console.log("[EMAIL_VERIFY] Token inserted", {
+    userId,
+    tokenHashPrefix: tokenHash.slice(0, 8),
+    expiresAt: expiresAt,
+  });
 
   // 5. Build verification link with raw token
   const appUrl =
@@ -141,8 +148,11 @@ export async function verifyToken(rawToken: string): Promise<TokenVerifyResult> 
   );
 
   if (error || !data) {
-    console.log("[EMAIL_VERIFY] Token verification failed", {
+    console.error("[EMAIL_VERIFY] Token verification failed", {
       reason: error ? "db-error" : "no-matching-row",
+      errorMessage: error?.message ?? "none",
+      errorCode: error?.code ?? "none",
+      tokenHashPrefix: tokenHash.slice(0, 8),
     });
     return { success: false, error: "invalid-or-expired" };
   }
