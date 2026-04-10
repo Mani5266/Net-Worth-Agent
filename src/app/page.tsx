@@ -6,7 +6,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button, Input } from "@/components/ui";
 import { Sidebar } from "@/components/Sidebar";
 import { WizardNav } from "@/components/WizardNav";
-import { ChatPanel } from "@/components/ChatPanel";
+import { ChatPanel, type ChatMessage } from "@/components/ChatPanel";
 import { StepPurpose } from "@/components/steps/StepPurpose";
 import { StepApplicant } from "@/components/steps/StepApplicant";
 import { StepIncome } from "@/components/steps/StepIncome";
@@ -141,6 +141,14 @@ function WizardShell() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [aiFlashKey, setAiFlashKey] = useState(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "Hello! I'll help you fill out your net worth certificate. Let's start \u2014 what is the purpose of this certificate? (e.g. Travelling Visa, Study Loan, Bank Finance, etc.)",
+    },
+  ]);
+  const [chatExtractedData, setChatExtractedData] = useState<Partial<FormData>>({});
 
   // ── AI Chat → Form real-time binding ─────────────────────────────────────
 
@@ -643,6 +651,10 @@ function WizardShell() {
                 <ChatPanel
                   onExtractedData={handleExtractedData}
                   onClose={() => setIsChatOpen(false)}
+                  messages={chatMessages}
+                  setMessages={setChatMessages}
+                  latestExtractedData={chatExtractedData}
+                  setLatestExtractedData={setChatExtractedData}
                 />
               </div>
             </>

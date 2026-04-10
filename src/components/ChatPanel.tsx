@@ -7,7 +7,7 @@ import type { FormData } from "@/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ChatMessage {
+export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
@@ -15,21 +15,15 @@ interface ChatMessage {
 interface ChatPanelProps {
   onExtractedData: (data: Partial<FormData>) => void;
   onClose: () => void;
+  messages: ChatMessage[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  latestExtractedData: Partial<FormData>;
+  setLatestExtractedData: React.Dispatch<React.SetStateAction<Partial<FormData>>>;
 }
-
-// ─── Initial greeting ────────────────────────────────────────────────────────
-
-const INITIAL_GREETING: ChatMessage = {
-  role: "assistant",
-  content:
-    "Hello! I'll help you fill out your net worth certificate. Let's start \u2014 what is the purpose of this certificate? (e.g. Travelling Visa, Study Loan, Bank Finance, etc.)",
-};
 
 // ─── ChatPanel ───────────────────────────────────────────────────────────────
 
-export function ChatPanel({ onExtractedData, onClose }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_GREETING]);
-  const [latestExtractedData, setLatestExtractedData] = useState<Partial<FormData>>({});
+export function ChatPanel({ onExtractedData, onClose, messages, setMessages, latestExtractedData, setLatestExtractedData }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
