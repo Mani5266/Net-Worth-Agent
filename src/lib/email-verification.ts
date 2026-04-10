@@ -32,16 +32,25 @@ type TokenVerifyResult =
  */
 export async function clearEmailConfirmation(userId: string): Promise<void> {
   const admin = createSupabaseAdminClient();
+  // NOTE: email_confirm:false does NOT work in Supabase GoTrue — once confirmed,
+  // email_confirmed_at cannot be un-set. So we use app_metadata as our own flag.
   const { error } = await admin.auth.admin.updateUserById(userId, {
-    email_confirm: false,
+    app_metadata: { custom_email_verified: false },
   });
   if (error) {
-    console.error("[EMAIL_VERIFY] Failed to clear email_confirmed_at", {
+    console.error("[EMAIL_VERIFY] Failed to set custom_email_verified=false", {
       userId,
       error: error.message,
     });
   } else {
-    console.log("[EMAIL_VERIFY] Cleared email_confirmed_at", { userId });
+    // Verify-after-write
+    const { data: check } = await admin.auth.admin.getUserById(userId);
+    const val = check?.user?.app_metadata?.custom_email_verified;
+    console.log("[EMAIL_VERIFY] clearEmailConfirmation result", {
+      userId,
+      custom_email_verified: val,
+      success: val === false,
+    });
   }
 }
 
@@ -211,10 +220,14 @@ export async function verifyToken(rawToken: string): Promise<TokenVerifyResult> 
 
   const data = row;
 
-  // Mark user email as confirmed in Supabase Auth
+  // Mark user email as confirmed: set both email_confirm (for Supabase's own tracking)
+  // AND our custom app_metadata flag (which is our actual source of truth)
   const { error: updateError } = await admin.auth.admin.updateUserById(
     data.user_id,
-    { email_confirm: true }
+    {
+      email_confirm: true,
+      app_metadata: { custom_email_verified: true },
+    }
   );
 
   if (updateError) {

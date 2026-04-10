@@ -57,8 +57,10 @@ export async function middleware(request: NextRequest) {
       return supabaseResponse;
     }
 
-    // ── User exists: check email verification ─────────────────────────────
-    const isVerified = Boolean(data.user.email_confirmed_at);
+    // ── User exists: check email verification via our custom flag ────────
+    // NOTE: email_confirmed_at is unreliable (Supabase won't un-confirm once set).
+    // We use app_metadata.custom_email_verified as the source of truth.
+    const isVerified = data.user.app_metadata?.custom_email_verified === true;
 
     if (!isVerified) {
       // Unverified users can access /login, /verify-email, and /reset-password only

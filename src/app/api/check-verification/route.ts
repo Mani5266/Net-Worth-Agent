@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 // ─── POST /api/check-verification ─────────────────────────────────────────────
 // Server-side check of email_confirmed_at using admin client.
+// Accepts { userId } — called after signInWithPassword succeeds.
 // Returns { verified: boolean } — never exposes user details.
 
 export async function POST(req: NextRequest) {
@@ -30,11 +31,22 @@ export async function POST(req: NextRequest) {
     const { data, error } = await admin.auth.admin.getUserById(userId);
 
     if (error || !data?.user) {
+      console.log("[CHECK_VERIFICATION] User lookup failed", {
+        userId,
+        error: error?.message ?? "no user",
+      });
       return NextResponse.json({ verified: false });
     }
 
+    const confirmed = data.user.app_metadata?.custom_email_verified === true;
+    console.log("[CHECK_VERIFICATION]", {
+      userId,
+      custom_email_verified: data.user.app_metadata?.custom_email_verified ?? "NOT_SET",
+      verified: confirmed,
+    });
+
     return NextResponse.json({
-      verified: Boolean(data.user.email_confirmed_at),
+      verified: confirmed,
     });
   } catch (err) {
     console.error("[CHECK_VERIFICATION] Unexpected error", {
