@@ -397,21 +397,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 9. Zod validation — strip unknown keys, apply defaults
-    const validation = FormDataSchema.partial().safeParse(parsed.extractedData);
+    // 9. Zod validation — validate field-by-field to keep valid fields even if some fail
+    //    Previously: all-or-nothing parse that dropped ALL data if any single field was invalid.
+    //    Now: each field is validated individually so one bad field doesn't nuke everything.
+    const partialSchema = FormDataSchema.partial();
+    const validatedData: Record<string, unknown> = {};
+    const failedFields: string[] = [];
 
-    let validatedData: Record<string, unknown>;
-    if (validation.success) {
-      validatedData = validation.data as Record<string, unknown>;
-    } else {
-      // Log Zod error paths (no PII)
-      console.warn("[AI_INTAKE_VALIDATION_FAIL]", {
-        errorPaths: validation.error.issues.map((i) => i.path.join(".")),
-        errorMessages: validation.error.issues.map((i) => i.message),
-        rawKeys: Object.keys(parsed.extractedData),
+    for (const [key, value] of Object.entries(parsed.extractedData)) {
+      // Validate just this single field through the partial schema
+      const singleField = { [key]: value };
+      const fieldResult = partialSchema.safeParse(singleField);
+      if (fieldResult.success) {
+        // Use the Zod-processed value (transforms, defaults applied)
+        const processed = fieldResult.data as Record<string, unknown>;
+        if (key in processed) {
+          validatedData[key] = processed[key];
+        }
+      } else {
+        failedFields.push(key);
+      }
+    }
+
+    if (failedFields.length > 0) {
+      console.warn("[AI_INTAKE_VALIDATION_PARTIAL]", {
+        failedFields,
+        passedFields: Object.keys(validatedData),
       });
-      // Fallback: return AI message but empty extractedData
-      validatedData = {};
     }
 
     // 10. Missing fields hint — only when 1-3 key fields remain
@@ -431,7 +443,8 @@ export async function POST(req: NextRequest) {
       extractedKeys: Object.keys(validatedData),
       extractedKeyCount: Object.keys(validatedData).length,
       missingKeyFields: missingFields.map((f) => f.key),
-      validationPassed: validation.success,
+      validationPassed: failedFields.length === 0,
+      failedFields: failedFields.length > 0 ? failedFields : undefined,
     });
 
     // PERF FIX 4: Latency logging
