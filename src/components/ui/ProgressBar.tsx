@@ -21,15 +21,15 @@ export function ProgressBar({ steps, currentStep, onClickStep }: ProgressBarProp
           return (
             <button
               key={step.id}
-              onClick={() => done && onClickStep(i)}
+              onClick={() => onClickStep(i)}
               aria-label={`Step ${i + 1}: ${step.label}${done ? " (completed)" : active ? " (current)" : ""}`}
               className={`
-                relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all duration-200
+                relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer
                 ${done
-                  ? "text-navy-950 cursor-pointer hover:text-gold-700"
+                  ? "text-navy-950 hover:text-gold-700"
                   : active
                     ? "text-navy-950"
-                    : "text-slate-400 cursor-default"
+                    : "text-slate-400 hover:text-slate-600"
                 }
               `}
             >
