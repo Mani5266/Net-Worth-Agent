@@ -41,19 +41,25 @@ export async function POST(request: Request) {
   // Send OTP via MSG91
   try {
     const res = await fetch(
-      `https://control.msg91.com/api/v5/otp?template_id=${templateId}&mobile=91${phone}&otp_length=6`,
+      "https://control.msg91.com/api/v5/otp",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           authkey: authKey,
         },
+        body: JSON.stringify({
+          template_id: templateId,
+          mobile: `91${phone}`,
+          otp_length: 6,
+        }),
       }
     );
 
     const data = await res.json();
+    console.log(`[send-otp] MSG91 response (status ${res.status}):`, JSON.stringify(data));
 
-    if (data.type === "success" || data.type === "otp_sent") {
+    if (data.type === "success" || data.type === "otp_sent" || data.message === "OTP sent successfully") {
       console.log(`[send-otp] OTP sent to 91${phone.slice(0, 2)}****${phone.slice(-2)}`);
       return NextResponse.json({ success: true });
     }
