@@ -141,14 +141,68 @@ function WizardShell() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [aiFlashKey, setAiFlashKey] = useState(0);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+  const INITIAL_CHAT: ChatMessage[] = [
     {
       role: "assistant",
       content:
         "Hello! I'll help you fill out your net worth certificate. Let's start \u2014 what is the purpose of this certificate? (e.g. Travelling Visa, Study Loan, Bank Finance, etc.)",
     },
-  ]);
+  ];
+
+  // ── Per-document chat history ──────────────────────────────────────────────
+  // Map<certificateId | "__new__", { messages, extractedData }>
+  const [chatMapInit] = useState<
+    Record<string, { messages: ChatMessage[]; extractedData: Partial<FormData> }>
+  >(() => {
+    try {
+      const raw = localStorage.getItem("networth_chat_map");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const chatMapRef = useRef(chatMapInit);
+
+  const saveChatMap = useCallback(() => {
+    try {
+      localStorage.setItem("networth_chat_map", JSON.stringify(chatMapRef.current));
+    } catch { /* quota exceeded — silently ignore */ }
+  }, []);
+
+  const chatMapKey = useCallback(
+    (id: string | null) => id ?? "__new__",
+    []
+  );
+
+  /** Snapshot current chat into the map */
+  const snapshotChat = useCallback(
+    (id: string | null, msgs: ChatMessage[], ext: Partial<FormData>) => {
+      chatMapRef.current[chatMapKey(id)] = { messages: msgs, extractedData: ext };
+      saveChatMap();
+    },
+    [chatMapKey, saveChatMap]
+  );
+
+  /** Load chat from map (returns initial greeting if none stored) */
+  const loadChat = useCallback(
+    (id: string | null): { messages: ChatMessage[]; extractedData: Partial<FormData> } => {
+      const entry = chatMapRef.current[chatMapKey(id)];
+      return entry ?? { messages: INITIAL_CHAT, extractedData: {} };
+    },
+    [chatMapKey]
+  );
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [chatExtractedData, setChatExtractedData] = useState<Partial<FormData>>({});
+
+  // ── Auto-persist chat to per-document map ──────────────────────────────────
+  useEffect(() => {
+    chatMapRef.current[chatMapKey(certificateId)] = {
+      messages: chatMessages,
+      extractedData: chatExtractedData,
+    };
+    saveChatMap();
+  }, [chatMessages, chatExtractedData, certificateId, chatMapKey, saveChatMap]);
 
   // ── AI Chat → Form real-time binding ─────────────────────────────────────
 
@@ -205,6 +259,10 @@ function WizardShell() {
             setData(parsed);
             setCertificateId(resumeId);
             localStorage.setItem("networth_current_id", resumeId);
+            // Restore chat for resumed certificate
+            const { messages: m, extractedData: e } = loadChat(resumeId);
+            setChatMessages(m);
+            setChatExtractedData(e);
             if (viewOnly === "true") setStep(6);
             return;
           }
@@ -221,6 +279,10 @@ function WizardShell() {
       const currentId = localStorage.getItem("networth_current_id");
       if (currentId) {
         setCertificateId(currentId);
+        // Restore chat for the active certificate
+        const { messages: m, extractedData: e } = loadChat(currentId);
+        setChatMessages(m);
+        setChatExtractedData(e);
       }
     };
 
@@ -262,6 +324,12 @@ function WizardShell() {
     }
 
     // Now start fresh
+    // Save current chat before resetting
+    snapshotChat(certificateId, chatMessages, chatExtractedData);
+    // Remove the "__new__" entry so new cert gets fresh chat
+    delete chatMapRef.current["__new__"];
+    saveChatMap();
+
     setData(INITIAL_STATE);
     setStep(0);
     updateCertificateId(null);
@@ -269,32 +337,32 @@ function WizardShell() {
     dirtyRef.current = false;
     localStorage.removeItem("networth_form_data");
     // Reset chat to clean state
-    setChatMessages([
-      {
-        role: "assistant",
-        content:
-          "Hello! I'll help you fill out your net worth certificate. Let's start \u2014 what is the purpose of this certificate? (e.g. Travelling Visa, Study Loan, Bank Finance, etc.)",
-      },
-    ]);
+    setChatMessages(INITIAL_CHAT);
     setChatExtractedData({});
     await loadHistory(); // Refresh sidebar to show the saved draft
     toast("New certificate started", "success");
     window.scrollTo(0, 0);
-  }, [certificateId, setData, updateCertificateId, clearAudit, loadHistory, toast]);
+  }, [certificateId, chatMessages, chatExtractedData, setData, updateCertificateId, clearAudit, loadHistory, toast, snapshotChat, saveChatMap]);
 
   const handleSwitchCertificate = useCallback(async (id: string) => {
     try {
       setLoading(true);
+      // Save current chat before switching
+      snapshotChat(certificateId, chatMessages, chatExtractedData);
       const freshData = await getCertificate(id);
       setData(freshData);
       updateCertificateId(id);
       setStep(0);
+      // Restore chat for the target certificate
+      const { messages: restoredMsgs, extractedData: restoredExt } = loadChat(id);
+      setChatMessages(restoredMsgs);
+      setChatExtractedData(restoredExt);
     } catch {
       toast("Failed to switch certificate", "error");
     } finally {
       setLoading(false);
     }
-  }, [setData, updateCertificateId, toast]);
+  }, [certificateId, chatMessages, chatExtractedData, setData, updateCertificateId, toast, snapshotChat, loadChat]);
 
   const handleRename = useCallback(async (id: string, newName: string) => {
     try {
@@ -346,6 +414,12 @@ function WizardShell() {
 
       if (currentStep === 0 && !certificateId) {
         const id = await saveCertificateDraft(newData);
+        // Migrate chat from "__new__" to real ID
+        if (chatMapRef.current["__new__"]) {
+          chatMapRef.current[id] = chatMapRef.current["__new__"];
+          delete chatMapRef.current["__new__"];
+          saveChatMap();
+        }
         updateCertificateId(id);
       } else if (certificateId) {
         await updateCertificateDraft(certificateId, newData);
@@ -361,7 +435,7 @@ function WizardShell() {
       setSaving(false);
       savingRef.current = false;
     }
-  }, [certificateId, updateCertificateId, setData, toast]);
+  }, [certificateId, updateCertificateId, setData, toast, saveChatMap]);
 
   // ── Next with Zod validation ─────────────────────────────────────────────
 

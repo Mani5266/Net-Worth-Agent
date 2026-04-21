@@ -309,49 +309,96 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    // 6. Call Gemini (with timeout to prevent hanging)
-    const tGemini = Date.now(); // PERF FIX 4: Gemini call timing
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    // 6. Call Gemini (with retry + exponential backoff for 429/5xx)
+    const tGemini = Date.now();
+    const MAX_RETRIES = 3;
+    const geminiUrl =
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    const geminiBody = JSON.stringify({
+      contents,
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json",
+      },
+    });
 
-    let aiRes: Response;
-    try {
-      aiRes = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-        {
+    let aiRes: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delayMs = 1000 * Math.pow(2, attempt - 1);
+        console.log(`[AI Intake] Retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+
+      try {
+        aiRes = await fetch(geminiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "x-goog-api-key": apiKey,
           },
           signal: controller.signal,
-          body: JSON.stringify({
-            contents,
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 2048,
-              responseMimeType: "application/json",
-            },
-          }),
+          body: geminiBody,
+        });
+      } catch (fetchErr) {
+        clearTimeout(timeout);
+        if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
+          console.error(`[AI Intake] Gemini request timed out (attempt ${attempt})`);
+          if (attempt === MAX_RETRIES) {
+            return NextResponse.json(
+              { success: false, error: "AI service timed out. Please try again." },
+              { status: 504 }
+            );
+          }
+          continue;
         }
-      );
-    } catch (fetchErr) {
-      clearTimeout(timeout);
-      if (fetchErr instanceof DOMException && fetchErr.name === "AbortError") {
-        console.error("[AI Intake] Gemini request timed out (15s)");
+        throw fetchErr;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      // Retry on 429 (rate limit) or 5xx (server error)
+      if (aiRes.status === 429 || aiRes.status >= 500) {
+        const errText = await aiRes.text();
+        console.error(
+          `[AI Intake] Gemini returned ${aiRes.status} (attempt ${attempt}): ${errText.slice(0, 200)}`
+        );
+        if (attempt === MAX_RETRIES) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                aiRes.status === 429
+                  ? "AI service is busy. Please wait a moment and try again."
+                  : "AI service error. Please try again.",
+            },
+            { status: 502 }
+          );
+        }
+        aiRes = null;
+        continue;
+      }
+
+      // Non-retryable error
+      if (!aiRes.ok) {
+        const errText = await aiRes.text();
+        console.error(`[AI Intake] Gemini returned ${aiRes.status}: ${errText}`);
         return NextResponse.json(
-          { success: false, error: "AI service timed out. Please try again." },
-          { status: 504 }
+          { success: false, error: "AI service error. Please try again." },
+          { status: 502 }
         );
       }
-      throw fetchErr;
-    } finally {
-      clearTimeout(timeout);
+
+      // Success — break out of retry loop
+      break;
     }
 
-    if (!aiRes.ok) {
-      const errText = await aiRes.text();
-      console.error(`[AI Intake] Gemini returned ${aiRes.status}: ${errText}`);
+    if (!aiRes || !aiRes.ok) {
       return NextResponse.json(
         { success: false, error: "AI service error. Please try again." },
         { status: 502 }
