@@ -601,9 +601,7 @@ function WizardShell() {
               </div>
             </details>
 
-            <div className="print-full">
-              <CertificatePreview ref={certRef} data={data} />
-            </div>
+            <CertificatePreview ref={certRef} data={data} />
             <AuditLog entries={auditEntries} />
           </div>
         );

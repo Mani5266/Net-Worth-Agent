@@ -24,7 +24,7 @@ interface CertificateProps {
 
 // Table header style — clean black borders, no colored background (matches real CA certificates)
 const TH: React.CSSProperties = {
-  padding: "7px 10px",
+  padding: "6px 10px",
   border: "1px solid #000",
   fontWeight: 700,
   background: "#fff",
@@ -35,7 +35,7 @@ const TH: React.CSSProperties = {
 
 // Table cell style
 function td(extra: React.CSSProperties = {}): React.CSSProperties {
-  return { padding: "6px 10px", border: "1px solid #000", fontSize: 12, ...extra };
+  return { padding: "5px 10px", border: "1px solid #000", fontSize: 12, ...extra };
 }
 
 interface AnnexTableProps {
@@ -199,11 +199,12 @@ export const CertificatePreview = forwardRef<HTMLDivElement, CertificateProps>(
     return (
       <div
         ref={ref}
+        className="print-full"
         style={{
           fontFamily: "'Book Antiqua', Georgia, serif",
           fontSize: 13,
           color: "#111",
-          lineHeight: 1.9,
+          lineHeight: 1.7,
           background: "#fff",
           padding: 36,
           borderRadius: 8,
