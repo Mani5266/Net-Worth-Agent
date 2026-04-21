@@ -411,6 +411,39 @@ function WizardShell() {
 
   const printCertificate = useCallback(() => window.print(), []);
 
+  // ── Keyboard Shortcuts ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore when typing in inputs/textareas
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      // Ctrl+S — save draft
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave(step);
+      }
+      // Ctrl+P — print certificate
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        printCertificate();
+      }
+      // Arrow keys for step navigation (only when not in an input)
+      if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setStep((s) => Math.min(STEPS.length - 1, s + 1));
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setStep((s) => Math.max(0, s - 1));
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [step, handleSave, printCertificate]);
+
   // ── Step Renderer ────────────────────────────────────────────────────────
 
   const renderStep = () => {
