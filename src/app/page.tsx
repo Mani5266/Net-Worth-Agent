@@ -637,7 +637,7 @@ function WizardShell() {
             <>
               {/* Mobile overlay backdrop */}
               <div
-                className="lg:hidden fixed inset-0 z-40 bg-navy-950/60 backdrop-blur-sm"
+                className="lg:hidden fixed inset-0 z-40 bg-navy-950/60 backdrop-blur-sm no-print"
                 onClick={() => setIsChatOpen(false)}
                 aria-hidden="true"
               />
@@ -645,7 +645,7 @@ function WizardShell() {
                 className="
                   fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
                   lg:flex-[27] lg:min-w-0 lg:border-r lg:border-slate-200
-                  h-[100dvh] lg:sticky lg:top-0 lg:h-screen animate-panel-in
+                  h-[100dvh] lg:sticky lg:top-0 lg:h-screen animate-panel-in no-print
                 "
               >
                 <ChatPanel
