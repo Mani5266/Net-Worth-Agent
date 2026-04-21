@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { createLimiter, getClientIdentifier, rateLimitResponse, checkCsrfOrigin } from "@/lib/ratelimit";
+import { createLimiter, getClientIdentifier, rateLimitResponse } from "@/lib/ratelimit";
 
 // Rate limit: 5 OTP sends per hour per phone, 10 per IP
 const otpPhoneRateLimit = createLimiter("otp-phone", { requests: 5, window: "1 h" });
 const otpIpRateLimit = createLimiter("otp-ip", { requests: 10, window: "1 h" });
 
 export async function POST(request: Request) {
-  // CSRF check
-  const csrfBlock = checkCsrfOrigin(request);
-  if (csrfBlock) return csrfBlock;
+  // No CSRF check — public endpoint (like forgot-password), rate limiting is sufficient
 
   const { phone } = await request.json();
 

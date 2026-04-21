@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import { createLimiter, getClientIdentifier, rateLimitResponse, checkCsrfOrigin } from "@/lib/ratelimit";
+import { createLimiter, getClientIdentifier, rateLimitResponse } from "@/lib/ratelimit";
 import crypto from "crypto";
 
 // Rate limit: 10 verify attempts per hour per phone (brute-force protection)
 const verifyOtpRateLimit = createLimiter("verify-otp", { requests: 10, window: "1 h" });
 
 export async function POST(request: Request) {
-  // CSRF check
-  const csrfBlock = checkCsrfOrigin(request);
-  if (csrfBlock) return csrfBlock;
+  // No CSRF check — public endpoint, rate limiting is sufficient
 
   const { phone, otp } = await request.json();
 
