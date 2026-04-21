@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAndSendPasswordReset } from "@/lib/password-reset";
-import { emailVerifyRateLimit, emailVerifyIpRateLimit, getClientIdentifier, rateLimitResponse } from "@/lib/ratelimit";
+import { emailVerifyRateLimit, emailVerifyIpRateLimit, getClientIdentifier, rateLimitResponse, checkCsrfOrigin } from "@/lib/ratelimit";
 
 export async function POST(request: Request) {
   try {
+    // CSRF check
+    const csrfBlock = checkCsrfOrigin(request);
+    if (csrfBlock) return csrfBlock;
+
     const body = await request.json();
     const email = body?.email?.trim()?.toLowerCase();
 

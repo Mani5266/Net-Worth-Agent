@@ -26,10 +26,12 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
     (files: FileList | null) => {
       if (!files) return;
       const valid = Array.from(files).filter((f) =>
-        ["application/pdf", "image/jpeg", "image/jpg"].includes(f.type) ||
+        ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"].includes(f.type) ||
         f.name.toLowerCase().endsWith(".pdf") ||
         f.name.toLowerCase().endsWith(".jpg") ||
-        f.name.toLowerCase().endsWith(".jpeg")
+        f.name.toLowerCase().endsWith(".jpeg") ||
+        f.name.toLowerCase().endsWith(".png") ||
+        f.name.toLowerCase().endsWith(".webp")
       );
       if (valid.length > 0) onAdd(valid);
     },
@@ -79,11 +81,11 @@ export function FileUpload({ label, docs, onAdd, onRemove, hint }: FileUploadPro
         <p className="text-xs text-slate-500">
           Drag &amp; drop or <span className="text-navy-700 font-semibold">click to upload</span>
         </p>
-        <p className="text-[10px] text-slate-400">{hint || "PDF or JPG accepted"}</p>
+        <p className="text-[10px] text-slate-400">{hint || "PDF, JPG, PNG or WebP accepted"}</p>
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}

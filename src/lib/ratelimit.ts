@@ -205,3 +205,42 @@ export function rateLimitResponse(resetTimestamp: number): NextResponse {
     }
   );
 }
+
+// ─── CSRF Origin Check ────────────────────────────────────────────────────────
+
+/**
+ * Validates that the request Origin header matches the app URL.
+ * Returns null if valid, or a 403 NextResponse if invalid.
+ * Skips check in development (localhost).
+ */
+export function checkCsrfOrigin(request: Request): NextResponse | null {
+  const origin = request.headers.get("origin");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+  // Skip in development
+  if (appUrl?.includes("localhost")) return null;
+
+  // If no origin header (e.g., server-to-server), block it for POST routes
+  if (!origin) {
+    return NextResponse.json(
+      { success: false, error: "Forbidden." },
+      { status: 403 }
+    );
+  }
+
+  // Compare origin against app URL
+  if (appUrl) {
+    try {
+      const allowedHost = new URL(appUrl).host;
+      const requestHost = new URL(origin).host;
+      if (requestHost === allowedHost) return null;
+    } catch {
+      // Invalid URL — fall through to reject
+    }
+  }
+
+  return NextResponse.json(
+    { success: false, error: "Forbidden." },
+    { status: 403 }
+  );
+}

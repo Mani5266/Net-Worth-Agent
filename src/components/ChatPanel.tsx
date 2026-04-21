@@ -35,6 +35,8 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   // Voice input refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -97,7 +99,7 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
       setError(null);
 
       const userMsg: ChatMessage = { role: "user", content: trimmed };
-      const newMessages = [...messages, userMsg];
+      const newMessages = [...messagesRef.current, userMsg];
       setMessages(newMessages);
       setSending(true);
 

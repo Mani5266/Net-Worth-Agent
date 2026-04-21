@@ -4,12 +4,12 @@
 
 import type { FormData } from "@/types";
 
-export function deepMergeFormData(
-  target: Partial<FormData>,
-  source: Partial<FormData>
-): Partial<FormData> {
+function deepMergeObjects(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
   const result = { ...target };
-  for (const key of Object.keys(source) as (keyof FormData)[]) {
+  for (const key of Object.keys(source)) {
     const srcVal = source[key];
     const tgtVal = result[key];
 
@@ -17,7 +17,7 @@ export function deepMergeFormData(
 
     // Arrays: replace entirely (AI returns the complete array each turn)
     if (Array.isArray(srcVal)) {
-      (result as Record<string, unknown>)[key] = srcVal;
+      result[key] = srcVal;
     }
     // Plain objects: merge recursively
     else if (
@@ -26,15 +26,25 @@ export function deepMergeFormData(
       tgtVal !== null &&
       !Array.isArray(tgtVal)
     ) {
-      (result as Record<string, unknown>)[key] = {
-        ...(tgtVal as Record<string, unknown>),
-        ...(srcVal as Record<string, unknown>),
-      };
+      result[key] = deepMergeObjects(
+        tgtVal as Record<string, unknown>,
+        srcVal as Record<string, unknown>
+      );
     }
     // Primitives: overwrite
     else {
-      (result as Record<string, unknown>)[key] = srcVal;
+      result[key] = srcVal;
     }
   }
   return result;
+}
+
+export function deepMergeFormData(
+  target: Partial<FormData>,
+  source: Partial<FormData>
+): Partial<FormData> {
+  return deepMergeObjects(
+    target as Record<string, unknown>,
+    source as Record<string, unknown>
+  ) as Partial<FormData>;
 }

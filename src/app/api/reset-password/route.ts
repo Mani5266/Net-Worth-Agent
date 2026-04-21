@@ -1,8 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { verifyResetAndUpdatePassword } from "@/lib/password-reset";
+import {
+  createLimiter,
+  getClientIdentifier,
+  rateLimitResponse,
+  checkCsrfOrigin,
+} from "@/lib/ratelimit";
 
-export async function POST(request: Request) {
+const resetPasswordRateLimit = createLimiter("reset-password", {
+  requests: 5,
+  window: "1 h",
+});
+
+export async function POST(request: NextRequest) {
   try {
+    // CSRF check
+    const csrfBlock = checkCsrfOrigin(request);
+    if (csrfBlock) return csrfBlock;
+
+    // Rate limit by IP
+    const ip = getClientIdentifier(request);
+    const limit = await resetPasswordRateLimit.check(ip);
+    if (!limit.success) return rateLimitResponse(limit.reset);
+
     const body = await request.json();
     const { token, password } = body ?? {};
 
