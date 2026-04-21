@@ -432,17 +432,17 @@ function WizardShell() {
       if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === "ArrowRight") {
           e.preventDefault();
-          setStep((s) => Math.min(STEPS.length - 1, s + 1));
+          handleNext();
         }
         if (e.key === "ArrowLeft") {
           e.preventDefault();
-          setStep((s) => Math.max(0, s - 1));
+          handleBack();
         }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [step, handleSave, printCertificate]);
+  }, [step, handleSave, printCertificate, handleNext, handleBack]);
 
   // ── Step Renderer ────────────────────────────────────────────────────────
 

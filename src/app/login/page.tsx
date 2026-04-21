@@ -53,10 +53,9 @@ function LoginPageInner() {
       if (user) {
         // Server-side verification check before auto-redirect
         try {
-          const checkRes = await fetch("/api/check-verification", {
+           const checkRes = await fetch("/api/check-verification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId: user.id }),
           });
           const checkData = await checkRes.json();
           if (checkData.verified) {
@@ -189,7 +188,6 @@ function LoginPageInner() {
           const checkRes = await fetch("/api/check-verification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId }),
           });
           const checkData = await checkRes.json();
           if (!checkData.verified) {

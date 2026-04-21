@@ -1,38 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
-import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 
 // ─── POST /api/check-verification ─────────────────────────────────────────────
-// Server-side check of email_confirmed_at using admin client.
-// Accepts { userId } — called after signInWithPassword succeeds.
+// Server-side check of custom_email_verified using admin client.
+// Requires authenticated session — userId is derived from session, not request body.
 // Returns { verified: boolean } — never exposes user details.
 
 export async function POST(req: NextRequest) {
+  void req; // consume param
   try {
-    let body: { userId?: unknown };
-    try {
-      body = await req.json();
-    } catch {
+    // 1. Require authenticated session
+    const supabase = createSupabaseServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
-        { verified: false, error: "Invalid JSON body." },
-        { status: 400 }
+        { verified: false, error: "Authentication required." },
+        { status: 401 }
       );
     }
 
-    const { userId } = body;
-    if (typeof userId !== "string" || !userId) {
-      return NextResponse.json(
-        { verified: false, error: "User ID is required." },
-        { status: 400 }
-      );
-    }
-
+    // 2. Look up verification status via admin client using session userId
     const admin = createSupabaseAdminClient();
-    const { data, error } = await admin.auth.admin.getUserById(userId);
+    const { data, error } = await admin.auth.admin.getUserById(user.id);
 
     if (error || !data?.user) {
       console.log("[CHECK_VERIFICATION] User lookup failed", {
-        userId,
+        userId: user.id,
         error: error?.message ?? "no user",
       });
       return NextResponse.json({ verified: false });
@@ -40,14 +35,12 @@ export async function POST(req: NextRequest) {
 
     const confirmed = data.user.app_metadata?.custom_email_verified === true;
     console.log("[CHECK_VERIFICATION]", {
-      userId,
+      userId: user.id,
       custom_email_verified: data.user.app_metadata?.custom_email_verified ?? "NOT_SET",
       verified: confirmed,
     });
 
-    return NextResponse.json({
-      verified: confirmed,
-    });
+    return NextResponse.json({ verified: confirmed });
   } catch (err) {
     console.error("[CHECK_VERIFICATION] Unexpected error", {
       error: err instanceof Error ? err.message : "unknown",
