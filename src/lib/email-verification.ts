@@ -174,48 +174,36 @@ export async function verifyToken(rawToken: string): Promise<TokenVerifyResult> 
     now,
   });
 
-  // Step 1: Find the token row (must exist and not be expired)
-  const { data: row, error: selectError } = await Promise.resolve(
+  // Atomic: DELETE the token by hash and return it in one query.
+  // This prevents TOCTOU race conditions where two concurrent requests
+  // could both SELECT the same token before either DELETEs it.
+  const { data: deletedRows, error: deleteError } = await Promise.resolve(
     admin
       .from("email_verifications")
-      .select("id, user_id, expires_at")
+      .delete()
       .eq("token_hash", tokenHash)
-      .single()
+      .select("id, user_id, expires_at")
   );
 
-  if (selectError || !row) {
-    console.error("[EMAIL_VERIFY] Token not found in DB", {
-      errorMessage: selectError?.message ?? "none",
-      errorCode: selectError?.code ?? "none",
+  const row = deletedRows?.[0];
+
+  if (deleteError || !row) {
+    console.error("[EMAIL_VERIFY] Token not found or already consumed", {
+      errorMessage: deleteError?.message ?? "none",
+      errorCode: deleteError?.code ?? "none",
       tokenHashPrefix: tokenHash.slice(0, 8),
     });
     return { success: false, error: "invalid-or-expired" };
   }
 
-  // Check expiry
+  // Check expiry (token already deleted — if expired, just reject)
   if (new Date(row.expires_at) <= new Date()) {
     console.error("[EMAIL_VERIFY] Token expired", {
       expiresAt: row.expires_at,
       now,
       tokenHashPrefix: tokenHash.slice(0, 8),
     });
-    // Clean up the expired row
-    await Promise.resolve(
-      admin.from("email_verifications").delete().eq("id", row.id)
-    );
     return { success: false, error: "invalid-or-expired" };
-  }
-
-  // Step 2: Delete the token (single-use)
-  const { error: deleteError } = await Promise.resolve(
-    admin.from("email_verifications").delete().eq("id", row.id)
-  );
-
-  if (deleteError) {
-    console.error("[EMAIL_VERIFY] Failed to delete token after verification", {
-      errorMessage: deleteError.message,
-    });
-    // Non-fatal — continue with confirmation (token was valid)
   }
 
   const data = row;

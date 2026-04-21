@@ -171,10 +171,13 @@ export function getClientIdentifier(
   if (userId) return `user:${userId}`;
 
   // Fallback: IP-based (for unauthenticated endpoints)
+  // Use the LAST IP in X-Forwarded-For — the rightmost entry is set by the
+  // trusted reverse proxy and cannot be spoofed by the client.
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    const firstIp = forwarded.split(",")[0]?.trim();
-    if (firstIp) return `ip:${firstIp}`;
+    const ips = forwarded.split(",").map((ip) => ip.trim()).filter(Boolean);
+    const lastIp = ips[ips.length - 1];
+    if (lastIp) return `ip:${lastIp}`;
   }
 
   const realIp = request.headers.get("x-real-ip");

@@ -4,6 +4,7 @@ import {
   ocrRateLimit,
   getClientIdentifier,
   rateLimitResponse,
+  checkCsrfOrigin,
 } from "@/lib/ratelimit";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { isValidPassportNumber } from "@/lib/mrz";
@@ -66,6 +67,10 @@ function maskPassport(pp: string): string {
 export async function POST(req: NextRequest) {
   const t0 = Date.now(); // PERF FIX 4: request timing
   try {
+    // CSRF check
+    const csrfBlock = checkCsrfOrigin(req);
+    if (csrfBlock) return csrfBlock;
+
     // 0. Auth check — hard failure, no fallbacks
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();

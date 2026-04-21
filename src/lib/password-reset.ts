@@ -40,6 +40,19 @@ export async function createAndSendPasswordReset(
   email: string
 ): Promise<ResetResult> {
   const admin = createSupabaseAdminClient();
+  const t0 = Date.now();
+
+  // Minimum response time to prevent timing-based user enumeration.
+  // Whether the user exists or not, the function takes at least this long.
+  const MIN_RESPONSE_MS = 800;
+
+  async function ensureMinTime<T>(result: T): Promise<T> {
+    const elapsed = Date.now() - t0;
+    if (elapsed < MIN_RESPONSE_MS) {
+      await new Promise((r) => setTimeout(r, MIN_RESPONSE_MS - elapsed));
+    }
+    return result;
+  }
 
   // 1. Look up user by email
   const normalizedEmail = email.toLowerCase().trim();
@@ -63,7 +76,7 @@ export async function createAndSendPasswordReset(
       console.error("[PASSWORD_RESET] Failed to query users", {
         error: listError.message,
       });
-      return { success: true, provider: "noop" };
+      return ensureMinTime({ success: true as const, provider: "noop" });
     }
 
     const found = listData?.users?.find(
@@ -82,8 +95,7 @@ export async function createAndSendPasswordReset(
 
   if (!user) {
     console.log("[PASSWORD_RESET] No user found for email (safe noop)");
-    return { success: true, provider: "noop" };
-  }
+    return ensureMinTime({ success: true as const, provider: "noop" });  }
 
   const userId = user.id;
 
@@ -176,39 +188,35 @@ export async function verifyResetAndUpdatePassword(
     tokenHashPrefix: tokenHash.slice(0, 8),
   });
 
-  // Step 1: Find the token row
-  const { data: row, error: selectError } = await Promise.resolve(
+  // Atomic: DELETE the token by hash and return it in one query.
+  // This prevents TOCTOU race conditions where two concurrent requests
+  // could both consume the same token with different passwords.
+  const { data: deletedRows, error: deleteError } = await Promise.resolve(
     admin
       .from("password_resets")
-      .select("id, user_id, expires_at")
+      .delete()
       .eq("token_hash", tokenHash)
-      .single()
+      .select("id, user_id, expires_at")
   );
 
-  if (selectError || !row) {
-    console.error("[PASSWORD_RESET] Token not found in DB", {
-      errorMessage: selectError?.message ?? "none",
+  const row = deletedRows?.[0];
+
+  if (deleteError || !row) {
+    console.error("[PASSWORD_RESET] Token not found or already consumed", {
+      errorMessage: deleteError?.message ?? "none",
       tokenHashPrefix: tokenHash.slice(0, 8),
     });
     return { success: false, error: "Invalid or expired reset link." };
   }
 
-  // Check expiry
+  // Check expiry (token already deleted — if expired, just reject)
   if (new Date(row.expires_at) <= new Date()) {
     console.error("[PASSWORD_RESET] Token expired", {
       expiresAt: row.expires_at,
       tokenHashPrefix: tokenHash.slice(0, 8),
     });
-    await Promise.resolve(
-      admin.from("password_resets").delete().eq("id", row.id)
-    );
     return { success: false, error: "Reset link has expired. Please request a new one." };
   }
-
-  // Step 2: Delete the token (single-use)
-  await Promise.resolve(
-    admin.from("password_resets").delete().eq("id", row.id)
-  );
 
   // Step 3: Update user's password
   const { error: updateError } = await admin.auth.admin.updateUserById(

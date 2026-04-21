@@ -5,6 +5,7 @@ import {
   emailVerifyIpRateLimit,
   getClientIdentifier,
   rateLimitResponse,
+  checkCsrfOrigin,
 } from "@/lib/ratelimit";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { createAndSendVerification } from "@/lib/email-verification";
@@ -15,6 +16,10 @@ import { createAndSendVerification } from "@/lib/email-verification";
 
 export async function POST(req: NextRequest) {
   try {
+    // CSRF check
+    const csrfBlock = checkCsrfOrigin(req);
+    if (csrfBlock) return csrfBlock;
+
     // 1. Auth check — must be logged in
     const supabase = createSupabaseServerClient();
     const {

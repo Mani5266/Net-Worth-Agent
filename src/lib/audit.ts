@@ -2,7 +2,13 @@ import { supabase } from "./supabase";
 
 /**
  * Logs an audit event for a certificate mutation.
- * Called from db.ts functions (browser Supabase client → RLS applies).
+ * Called from db.ts (browser Supabase client → RLS applies).
+ *
+ * SECURITY: RLS policies on `audit_logs` and `certificate_versions` MUST be
+ * INSERT-only for the authenticated role. Users must NOT be able to UPDATE or
+ * DELETE their own audit trail. Verify with:
+ *   - ALTER POLICY ON audit_logs FOR DELETE TO authenticated USING (false);
+ *   - Same for certificate_versions.
  *
  * Never throws — audit logging failures must not break the user's operation.
  */
@@ -14,10 +20,11 @@ export function logAudit(
   beforeData?: Record<string, unknown> | null,
   afterData?: Record<string, unknown> | null
 ): void {
-  // Fire-and-forget — wrapped in Promise.resolve() because Supabase returns PromiseLike
+  // Fire-and-forget
   try {
+    const client = supabase;
     Promise.resolve(
-      supabase
+      client
         .from("audit_logs")
         .insert({
           user_id: userId,
@@ -41,7 +48,7 @@ export function logAudit(
 
 /**
  * Saves a version snapshot of certificate form_data BEFORE a mutation.
- * Called from db.ts before updateCertificateDraft and renameCertificate.
+ * Uses browser client — RLS must be INSERT-only (see note above).
  *
  * Never throws — version snapshot failures must not break the user's operation.
  */
@@ -50,10 +57,11 @@ export function snapshotVersion(
   certificateId: string,
   snapshot: Record<string, unknown>
 ): void {
-  // Fire-and-forget — wrapped in Promise.resolve() because Supabase returns PromiseLike
+  // Fire-and-forget
   try {
+    const client = supabase;
     Promise.resolve(
-      supabase
+      client
         .from("certificate_versions")
         .insert({
           user_id: userId,
