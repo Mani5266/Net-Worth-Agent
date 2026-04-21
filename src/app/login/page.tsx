@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, Phone, Mail } from "lucide-react";
 
 /* ── Feature bullet ─────────────────────────────────────────── */
 function Feature({ text }: { text: string }) {
@@ -38,20 +38,42 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [loginMethod, setLoginMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  /* countdown timer for resend OTP */
+  useEffect(() => {
+    if (countdown <= 0) {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      return;
+    }
+    countdownRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [countdown]);
 
   /* redirect if already authenticated + verified; read URL params for status messages */
   useEffect(() => {
-    // FIX 6: getUser() validates token server-side; getSession() only reads local storage
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
-        // Server-side verification check before auto-redirect
         try {
            const checkRes = await fetch("/api/check-verification", {
             method: "POST",
@@ -62,16 +84,12 @@ function LoginPageInner() {
             router.replace("/");
             return;
           }
-          // User exists but not verified — sign them out and show login page
           await supabase.auth.signOut();
         } catch {
-          // Fail CLOSED — if verification check fails, sign out and show login page.
-          // NEVER redirect to "/" on failure — that bypasses the gate.
           await supabase.auth.signOut();
         }
       }
 
-      // Read verification status from URL params (set by /api/verify-email redirect)
       const verified = searchParams.get("verified");
       const errorParam = searchParams.get("error");
 
@@ -92,9 +110,85 @@ function LoginPageInner() {
     setMode(tab);
     setError("");
     setSuccess("");
+    setOtpSent(false);
+    setOtp("");
+    setCountdown(0);
   };
 
-  /* form submit */
+  /* toggle login method */
+  const toggleLoginMethod = (method: "email" | "phone") => {
+    setLoginMethod(method);
+    setError("");
+    setSuccess("");
+    setOtpSent(false);
+    setOtp("");
+    setCountdown(0);
+  };
+
+  /* send OTP */
+  const handleSendOtp = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Failed to send OTP.");
+        setLoading(false);
+        return;
+      }
+      setOtpSent(true);
+      setCountdown(30);
+      setSuccess("OTP sent to your mobile number.");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  /* verify OTP and sign in */
+  const handleVerifyOtp = async () => {
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Verification failed.");
+        setLoading(false);
+        return;
+      }
+
+      // Sign in with the credentials returned by verify-otp
+      if (data.loginMethod === "credentials") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
+        if (signInError) {
+          setError("Login failed after verification. Please try again.");
+          setLoading(false);
+          return;
+        }
+        router.replace("/");
+        return;
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  /* email form submit */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -139,15 +233,10 @@ function LoginPageInner() {
           return;
         }
 
-        // Even if Supabase auto-confirms and returns a session,
-        // we sign out and require the user to login explicitly.
-        // This prevents bypassing the login step via signup.
         if (data.session) {
           await supabase.auth.signOut();
         }
 
-        // Send verification email and clear auto-confirmation.
-        // MUST await — otherwise user can login before email_confirmed_at is cleared.
         if (data.user?.id) {
           try {
             await fetch("/api/send-verification", {
@@ -174,10 +263,8 @@ function LoginPageInner() {
           return;
         }
 
-        // Server-side verification check via admin client (bulletproof — no JWT caching issues)
         const userId = signInData.user?.id;
         if (!userId) {
-          // Shouldn't happen — signIn succeeded but no user ID. Fail closed.
           await supabase.auth.signOut();
           setError("Something went wrong. Please try again.");
           setLoading(false);
@@ -197,8 +284,6 @@ function LoginPageInner() {
             return;
           }
         } catch {
-          // Fail CLOSED — if verification check fails, sign out and block login.
-          // NEVER fall through to router.replace("/") — that bypasses the gate.
           await supabase.auth.signOut();
           setError("Unable to verify your account status. Please try again.");
           setLoading(false);
@@ -231,6 +316,7 @@ function LoginPageInner() {
   /* ── Render ─────────────────────────────────────────────── */
   const isLogin = mode === "login";
   const isForgot = mode === "forgot";
+  const isPhoneLogin = isLogin && loginMethod === "phone";
 
   return (
     <div className="min-h-screen flex font-sans">
@@ -302,7 +388,7 @@ function LoginPageInner() {
 
           {/* tabs */}
           {!isForgot && (
-            <div className="flex mb-8 border border-slate-200 rounded-[10px] overflow-hidden">
+            <div className="flex mb-6 border border-slate-200 rounded-[10px] overflow-hidden">
               <button
                 type="button"
                 onClick={() => switchTab("login")}
@@ -328,6 +414,36 @@ function LoginPageInner() {
             </div>
           )}
 
+          {/* Login method toggle (only on login tab) */}
+          {isLogin && !isForgot && (
+            <div className="flex mb-6 gap-2">
+              <button
+                type="button"
+                onClick={() => toggleLoginMethod("email")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg border transition-all cursor-pointer ${
+                  loginMethod === "email"
+                    ? "border-gold-500 bg-gold-500/10 text-gold-700"
+                    : "border-slate-200 text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                Email
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleLoginMethod("phone")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg border transition-all cursor-pointer ${
+                  loginMethod === "phone"
+                    ? "border-gold-500 bg-gold-500/10 text-gold-700"
+                    : "border-slate-200 text-slate-400 hover:border-slate-300"
+                }`}
+              >
+                <Phone className="w-4 h-4" />
+                Mobile OTP
+              </button>
+            </div>
+          )}
+
           {/* messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg text-sm mb-4">
@@ -340,85 +456,174 @@ function LoginPageInner() {
             </div>
           )}
 
-          {/* form */}
-          <form onSubmit={handleSubmit}>
-            <div className="mb-5">
-              <label className="block text-sm text-slate-900 mb-2 font-semibold">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                required
-                autoComplete="email"
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
-                  focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
-              />
-            </div>
-
-            {!isForgot && (
+          {/* ── Phone OTP Form ──────────────────────────────── */}
+          {isPhoneLogin ? (
+            <div>
               <div className="mb-5">
                 <label className="block text-sm text-slate-900 mb-2 font-semibold">
-                  Password
+                  Mobile Number
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                  minLength={6}
-                  autoComplete={isLogin ? "current-password" : "new-password"}
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
-                    focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
-                />
-                {isLogin && (
-                  <div className="text-right mt-1.5">
-                    <a
-                      onClick={() => switchTab("forgot")}
-                      className="text-xs text-slate-400 hover:text-navy-950 font-medium cursor-pointer hover:underline transition-colors"
+                <div className="flex gap-2">
+                  <div className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-[0.95rem] font-medium shrink-0">
+                    +91
+                  </div>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                      setPhone(val);
+                    }}
+                    placeholder="9876543210"
+                    maxLength={10}
+                    autoComplete="tel"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                      focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              {!otpSent ? (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={loading || phone.length !== 10}
+                  className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2
+                    transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Sending..." : "Send OTP"}
+                </button>
+              ) : (
+                <>
+                  <div className="mb-5">
+                    <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                      Enter OTP
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={otp}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                        setOtp(val);
+                      }}
+                      placeholder="6-digit OTP"
+                      maxLength={6}
+                      autoComplete="one-time-code"
+                      autoFocus
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none tracking-[0.3em] text-center font-mono
+                        focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400 placeholder:tracking-normal"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={loading || otp.length !== 6}
+                    className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer
+                      transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Verifying..." : "Verify & Sign In"}
+                  </button>
+
+                  <div className="text-center mt-3">
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={countdown > 0 || loading}
+                      className="text-sm text-slate-400 hover:text-navy-950 font-medium cursor-pointer hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-transparent border-none"
                     >
-                      Forgot password?
-                    </a>
+                      {countdown > 0
+                        ? `Resend OTP in ${countdown}s`
+                        : "Resend OTP"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── Email Form (existing) ──────────────────────── */
+            <>
+              <form onSubmit={handleSubmit}>
+                <div className="mb-5">
+                  <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    required
+                    autoComplete="email"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                      focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
+                  />
+                </div>
+
+                {!isForgot && (
+                  <div className="mb-5">
+                    <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      minLength={6}
+                      autoComplete={isLogin ? "current-password" : "new-password"}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                        focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
+                    />
+                    {isLogin && (
+                      <div className="text-right mt-1.5">
+                        <a
+                          onClick={() => switchTab("forgot")}
+                          className="text-xs text-slate-400 hover:text-navy-950 font-medium cursor-pointer hover:underline transition-colors"
+                        >
+                          Forgot password?
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {!isLogin && !isForgot && (
-              <div className="mb-5">
-                <label className="block text-sm text-slate-900 mb-2 font-semibold">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
-                  autoComplete="new-password"
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
-                    focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
-                />
-              </div>
-            )}
+                {!isLogin && !isForgot && (
+                  <div className="mb-5">
+                    <label className="block text-sm text-slate-900 mb-2 font-semibold">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm your password"
+                      autoComplete="new-password"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg text-slate-900 text-[0.95rem] outline-none
+                        focus:border-gold-500 focus:ring-2 focus:ring-gold-400/20 transition-all placeholder:text-slate-400"
+                    />
+                  </div>
+                )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2
-                transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading
-                ? "..."
-                : isForgot
-                  ? "Send Reset Link"
-                  : isLogin
-                    ? "Sign In"
-                    : "Create Account"}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 bg-navy-950 text-white border-none rounded-lg text-[0.95rem] font-semibold cursor-pointer mt-2
+                    transition-all hover:bg-navy-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading
+                    ? "..."
+                    : isForgot
+                      ? "Send Reset Link"
+                      : isLogin
+                        ? "Sign In"
+                        : "Create Account"}
+                </button>
+              </form>
+            </>
+          )}
 
           <div className="text-center mt-5 text-sm text-slate-400">
             {isForgot ? (
