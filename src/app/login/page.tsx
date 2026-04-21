@@ -168,20 +168,8 @@ function LoginPageInner() {
         return;
       }
 
-      // Sign in with the credentials returned by verify-otp
-      if (data.loginMethod === "credentials") {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        });
-        if (signInError) {
-          setError("Login failed after verification. Please try again.");
-          setLoading(false);
-          return;
-        }
-        router.replace("/");
-        return;
-      }
+      // Session cookies set server-side — just redirect
+      router.replace("/");
     } catch {
       setError("Something went wrong. Please try again.");
     }
@@ -217,8 +205,8 @@ function LoginPageInner() {
           setLoading(false);
           return;
         }
-        if (password.length < 6) {
-          setError("Password must be at least 6 characters.");
+        if (password.length < 8) {
+          setError("Password must be at least 8 characters.");
           setLoading(false);
           return;
         }

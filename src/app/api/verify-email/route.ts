@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 import { verifyToken } from "@/lib/email-verification";
+import { createLimiter, getClientIdentifier } from "@/lib/ratelimit";
+
+const verifyEmailLimit = createLimiter("verify-email", { requests: 15, window: "1 h" });
 
 // ─── GET /api/verify-email?token=xxx ──────────────────────────────────────────
 // Clicked from the verification email link.
@@ -8,6 +11,13 @@ import { verifyToken } from "@/lib/email-verification";
 
 export async function GET(req: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  // Rate limit
+  const ipId = getClientIdentifier(req);
+  const rl = await verifyEmailLimit.check(ipId);
+  if (!rl.success) {
+    return NextResponse.redirect(new URL("/login?error=ratelimit", appUrl));
+  }
 
   try {
     const token = req.nextUrl.searchParams.get("token");

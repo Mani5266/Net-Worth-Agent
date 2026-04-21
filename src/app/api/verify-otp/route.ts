@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase-server";
 import { createLimiter, getClientIdentifier, rateLimitResponse } from "@/lib/ratelimit";
 import crypto from "crypto";
 
@@ -9,7 +9,16 @@ const verifyOtpRateLimit = createLimiter("verify-otp", { requests: 10, window: "
 export async function POST(request: Request) {
   // No CSRF check — public endpoint, rate limiting is sufficient
 
-  const { phone, otp } = await request.json();
+  let phone: string;
+  let otp: string;
+  try {
+    ({ phone, otp } = await request.json());
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid request body." },
+      { status: 400 }
+    );
+  }
 
   // Validate inputs
   if (!phone || !/^[6-9]\d{9}$/.test(phone)) {
@@ -73,8 +82,17 @@ export async function POST(request: Request) {
   const phoneEmail = `${phone}@phone.networth.local`;
 
   // Deterministic password from phone (user never types this — only used internally)
+  // Uses a dedicated secret — NOT the service role key — to limit blast radius if either leaks
+  const phoneAuthSecret = process.env.PHONE_AUTH_SECRET;
+  if (!phoneAuthSecret) {
+    console.error("[verify-otp] PHONE_AUTH_SECRET not configured");
+    return NextResponse.json(
+      { success: false, error: "Auth service misconfigured." },
+      { status: 500 }
+    );
+  }
   const phonePassword = crypto
-    .createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    .createHmac("sha256", phoneAuthSecret)
     .update(`phone-auth:${phone}`)
     .digest("hex");
 
@@ -123,33 +141,22 @@ export async function POST(request: Request) {
       }
     }
 
-    // Sign in the user by generating a magic link session
-    // Use admin to generate access/refresh tokens directly
-    const { data: sessionData, error: sessionError } =
-      await admin.auth.admin.generateLink({
-        type: "magiclink",
-        email: phoneEmail,
-      });
-
-    if (sessionError || !sessionData) {
-      console.error("[verify-otp] Failed to generate session:", sessionError?.message);
-      // Fallback: return email+password for client-side sign-in
-      return NextResponse.json({
-        success: true,
-        loginMethod: "credentials",
-        email: phoneEmail,
-        password: phonePassword,
-      });
-    }
-
-    // Return the hashed_token for client to exchange via verifyOtp or
-    // return credentials for client-side signInWithPassword
-    return NextResponse.json({
-      success: true,
-      loginMethod: "credentials",
+    // Sign in server-side and set session cookies directly — no password sent to client
+    const serverClient = createSupabaseServerClient();
+    const { error: signInError } = await serverClient.auth.signInWithPassword({
       email: phoneEmail,
       password: phonePassword,
     });
+
+    if (signInError) {
+      console.error("[verify-otp] Server sign-in failed:", signInError.message);
+      return NextResponse.json(
+        { success: false, error: "Login failed after verification. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[verify-otp] Unexpected error:", err);
     return NextResponse.json(

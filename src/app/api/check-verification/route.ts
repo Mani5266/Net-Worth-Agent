@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
+import { createLimiter, getClientIdentifier, rateLimitResponse } from "@/lib/ratelimit";
+
+const checkVerifLimit = createLimiter("check-verif", { requests: 20, window: "1 h" });
 
 // ─── POST /api/check-verification ─────────────────────────────────────────────
 // Server-side check of custom_email_verified using admin client.
@@ -8,7 +11,11 @@ import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/sup
 // Returns { verified: boolean } — never exposes user details.
 
 export async function POST(req: NextRequest) {
-  void req; // consume param
+  // Rate limit
+  const ipId = getClientIdentifier(req);
+  const rl = await checkVerifLimit.check(ipId);
+  if (!rl.success) return rateLimitResponse(rl.reset);
+
   try {
     // 1. Require authenticated session
     const supabase = createSupabaseServerClient();

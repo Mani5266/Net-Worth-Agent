@@ -8,7 +8,15 @@ const otpIpRateLimit = createLimiter("otp-ip", { requests: 10, window: "1 h" });
 export async function POST(request: Request) {
   // No CSRF check — public endpoint (like forgot-password), rate limiting is sufficient
 
-  const { phone } = await request.json();
+  let phone: string;
+  try {
+    ({ phone } = await request.json());
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Invalid request body." },
+      { status: 400 }
+    );
+  }
 
   // Validate Indian mobile: 10 digits starting with 6-9
   if (!phone || !/^[6-9]\d{9}$/.test(phone)) {
