@@ -34,7 +34,7 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
   const [voiceSupported, setVoiceSupported] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Voice input refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -90,7 +90,10 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
       const trimmed = (overrideText ?? input).trim();
       if (!trimmed || sending) return;
 
-      if (!overrideText) setInput("");
+      if (!overrideText) {
+        setInput("");
+        if (inputRef.current) inputRef.current.style.height = "auto";
+      }
       setError(null);
 
       const userMsg: ChatMessage = { role: "user", content: trimmed };
@@ -353,19 +356,28 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
 
       {/* Input bar */}
       <div className="border-t border-slate-200 px-3 py-2.5 bg-white shrink-0 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))]">
-        <div className="flex items-center gap-1.5">
-          <input
+        <div className="flex items-end gap-1.5">
+          <textarea
             ref={inputRef}
-            type="text"
+            rows={1}
             inputMode="text"
             autoComplete="off"
             autoCorrect="off"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // Auto-grow up to 5 rows
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = Math.min(el.scrollHeight, 120) + "px";
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
+                // Reset height after send
+                const el = e.target as HTMLTextAreaElement;
+                el.style.height = "auto";
               }
             }}
             placeholder={
@@ -379,7 +391,8 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
             className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-base lg:text-[13px]
               focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:border-gold-500
               hover:border-slate-300 transition-all duration-150
-              bg-white disabled:opacity-50 disabled:cursor-not-allowed min-w-0"
+              bg-white disabled:opacity-50 disabled:cursor-not-allowed min-w-0
+              resize-none overflow-y-auto leading-snug"
           />
           {voiceSupported && (
             <button
