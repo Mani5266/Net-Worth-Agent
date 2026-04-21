@@ -268,6 +268,15 @@ function WizardShell() {
     clearAudit();
     dirtyRef.current = false;
     localStorage.removeItem("networth_form_data");
+    // Reset chat to clean state
+    setChatMessages([
+      {
+        role: "assistant",
+        content:
+          "Hello! I'll help you fill out your net worth certificate. Let's start \u2014 what is the purpose of this certificate? (e.g. Travelling Visa, Study Loan, Bank Finance, etc.)",
+      },
+    ]);
+    setChatExtractedData({});
     await loadHistory(); // Refresh sidebar to show the saved draft
     toast("New certificate started", "success");
     window.scrollTo(0, 0);
