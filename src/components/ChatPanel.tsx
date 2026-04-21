@@ -352,11 +352,14 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
       )}
 
       {/* Input bar */}
-      <div className="border-t border-slate-200 px-3 py-2.5 bg-white shrink-0">
+      <div className="border-t border-slate-200 px-3 py-2.5 bg-white shrink-0 pb-[calc(0.625rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-center gap-1.5">
           <input
             ref={inputRef}
             type="text"
+            inputMode="text"
+            autoComplete="off"
+            autoCorrect="off"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -373,7 +376,7 @@ export function ChatPanel({ onExtractedData, onClose, messages, setMessages, lat
                   : "Tell me your details..."
             }
             disabled={sending || recording || transcribing}
-            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-[13px]
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-base lg:text-[13px]
               focus:outline-none focus:ring-2 focus:ring-gold-400/30 focus:border-gold-500
               hover:border-slate-300 transition-all duration-150
               bg-white disabled:opacity-50 disabled:cursor-not-allowed min-w-0"

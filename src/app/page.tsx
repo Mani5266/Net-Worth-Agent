@@ -645,7 +645,7 @@ function WizardShell() {
                 className="
                   fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto
                   lg:flex-[27] lg:min-w-0 lg:border-r lg:border-slate-200
-                  h-screen lg:sticky lg:top-0 lg:h-screen animate-panel-in
+                  h-[100dvh] lg:sticky lg:top-0 lg:h-screen animate-panel-in
                 "
               >
                 <ChatPanel
@@ -664,11 +664,11 @@ function WizardShell() {
           <div className={`${isChatOpen ? "lg:flex-[73] lg:min-w-0" : "flex-1"} px-4 py-8 lg:px-12 lg:py-10 overflow-y-auto`}>
             <div className="max-w-4xl mx-auto">
             {/* Page Header */}
-            <div className="no-print mb-6">
-              <h1 className="text-3xl font-black text-navy-950 tracking-tight">
+            <div className="no-print mb-6 mt-10 lg:mt-0">
+              <h1 className="text-2xl lg:text-3xl font-black text-navy-950 tracking-tight">
                 Net Worth Certificate
               </h1>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex flex-wrap items-center gap-2 lg:gap-3 mt-1">
                 <p className="text-sm text-slate-500">
                   Fill in the details below to generate your certificate
                 </p>

@@ -41,29 +41,47 @@ export async function createAndSendPasswordReset(
 ): Promise<ResetResult> {
   const admin = createSupabaseAdminClient();
 
-  // 1. Look up user by email — use listUsers with filter
-  const { data: listData, error: listError } = await admin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1,
-  });
-
-  if (listError) {
-    console.error("[PASSWORD_RESET] Failed to query users", {
-      error: listError.message,
-    });
-    // Return success to prevent email enumeration
-    return { success: true, provider: "noop" };
-  }
-
-  // Find user by email (case-insensitive)
+  // 1. Look up user by email
   const normalizedEmail = email.toLowerCase().trim();
-  const user = listData?.users?.find(
-    (u: { email?: string }) => u.email?.toLowerCase() === normalizedEmail
-  );
+
+  // Try getUserById-style lookup — Supabase JS v2 doesn't have getUserByEmail,
+  // so query the admin user list filtering manually across all pages.
+  // Instead, use a more reliable approach: query via REST API filter.
+  let user: { id: string; email?: string } | null = null;
+
+  // Supabase admin SDK v2.99+ supports listing with filter params
+  // Paginate through users to find the match
+  let page = 1;
+  const perPage = 50;
+  while (!user) {
+    const { data: listData, error: listError } = await admin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (listError) {
+      console.error("[PASSWORD_RESET] Failed to query users", {
+        error: listError.message,
+      });
+      return { success: true, provider: "noop" };
+    }
+
+    const found = listData?.users?.find(
+      (u: { email?: string }) => u.email?.toLowerCase() === normalizedEmail
+    );
+
+    if (found) {
+      user = found;
+      break;
+    }
+
+    // No more pages
+    if (!listData?.users?.length || listData.users.length < perPage) break;
+    page++;
+  }
 
   if (!user) {
     console.log("[PASSWORD_RESET] No user found for email (safe noop)");
-    // Return success to prevent email enumeration
     return { success: true, provider: "noop" };
   }
 
