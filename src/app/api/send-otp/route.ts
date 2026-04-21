@@ -57,16 +57,17 @@ export async function POST(request: Request) {
     );
 
     const data = await res.json();
-    console.log(`[send-otp] MSG91 response (status ${res.status}):`, JSON.stringify(data));
+    console.log(`[send-otp] MSG91 raw (status ${res.status}):`, JSON.stringify(data));
 
+    // Debug: also return MSG91 response to client temporarily
     if (data.type === "success" || data.type === "otp_sent" || data.message === "OTP sent successfully") {
       console.log(`[send-otp] OTP sent to 91${phone.slice(0, 2)}****${phone.slice(-2)}`);
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, _debug: { msg91Status: res.status, msg91Response: data } });
     }
 
     console.error(`[send-otp] MSG91 error: ${JSON.stringify(data)}`);
     return NextResponse.json(
-      { success: false, error: "Failed to send OTP. Please try again." },
+      { success: false, error: `OTP failed: ${data.message || JSON.stringify(data)}`, _debug: { msg91Status: res.status, msg91Response: data } },
       { status: 502 }
     );
   } catch (err) {
